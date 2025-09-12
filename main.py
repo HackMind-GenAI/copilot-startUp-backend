@@ -10,6 +10,3 @@ app = FastAPI()
 def main(userInput: HelloRequest):
     result=generate_metrics(userInput.name)
     return result
-
-if __name__ == "__main__":
-    main()
