@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+langsmith>=0.1.25
+langchain
+langchain-google-genai
+pydantic
+python-dotenv
