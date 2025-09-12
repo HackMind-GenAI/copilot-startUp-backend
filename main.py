@@ -6,7 +6,7 @@ from models.summarize import HelloResponse,HelloRequest
 
 app = FastAPI()
 @traceable
-@app.post("/summarize")
+@app.post("/analyze")
 def main(userInput: HelloRequest):
     result=generate_metrics(userInput.name)
     return result
