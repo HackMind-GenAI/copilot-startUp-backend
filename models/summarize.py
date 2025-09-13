@@ -12,4 +12,4 @@ class HelloRequest(BaseModel):
 
 
 class HelloResponse(BaseModel):
-    message: str
+    summary: str
