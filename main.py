@@ -1,3 +1,4 @@
+import io
 import json
 from fastapi import FastAPI, Request
 from services.metrics_generator import generate_metrics
