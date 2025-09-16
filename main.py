@@ -2,9 +2,11 @@ import io
 import json
 from fastapi import FastAPI, Request
 from services.metrics_generator import generate_metrics
+from services.founder_summary_generator import generate_oracle
 from langsmith import traceable
 import uvicorn
 from models.summarize import HelloResponse,HelloRequest
+from models.founder_summary import FounderSummaryRequest
 from google.cloud import storage
 import base64
 
@@ -79,6 +81,40 @@ async def handle_gcs_event(request: Request):
 
     result=generate_metrics(final_prompt_content)
     return result
+
+@app.post("/founder-summary")
+async def founder_summary(founder_request: FounderSummaryRequest):
+    try:
+        print("Received founder summary request:", founder_request.founder);
+        with open("./resources/founders-data.txt", "r", encoding="utf-8") as file:
+            founders_data = file.read()
+        
+        multimodal_content_parts = []
+        
+        multimodal_content_parts.append({
+            "type": "text",
+            "text": founders_data
+        })
+        
+        user_prompt = f"""Based on the provided founder profiles and documents, analyze {founder_request.founder}:
+        1. Leadership style and decision-making approach
+        2. Technical expertise and business acumen
+        3. Track record of success and failures
+        4. Collaboration patterns with co-founders
+        5. Risk tolerance and growth philosophy
+        6. Overall investment potential and founder-market fit
+
+        Provide a comprehensive summary with key insights about {founder_request.founder}'s strengths, weaknesses, and suitability for different types of ventures. Respond in structured JSON format with detailed analysis."""
+
+        final_prompt_content = [{"type": "text", "text": user_prompt}] + multimodal_content_parts
+        
+        result = generate_oracle(final_prompt_content)
+        return result
+        
+    except FileNotFoundError:
+        return {"error": "founders-data.txt file not found in resources directory"}
+    except Exception as e:
+        return {"error": f"An error occurred while processing founder data: {str(e)}"}
 
 # if __name__ == "__main__":
 #     uvicorn.run("main:app")
