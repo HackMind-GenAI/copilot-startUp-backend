@@ -6,3 +6,4 @@ langchain-google-genai
 pydantic
 python-dotenv
 google-cloud-storage
+google-cloud-bigquery
