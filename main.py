@@ -1,12 +1,22 @@
+from datetime import timedelta
 import io
 import json
+import os
 from fastapi import FastAPI, Request
 from services.metrics_generator import generate_metrics
 from langsmith import traceable
 import uvicorn
-from models.summarize import HelloResponse,HelloRequest
+from models.summarize import HelloRequest
 from google.cloud import storage
 import base64
+from google.cloud import bigquery
+import uuid
+from datetime import datetime
+import zipfile
+import google.auth
+
+bq_client = bigquery.Client()
+table_id = os.environ.get("BQ_TABLE_ID")
 
 app = FastAPI()
 @traceable
@@ -14,6 +24,8 @@ app = FastAPI()
 def main(userInput: HelloRequest):
     result=generate_metrics(userInput.name)
     return result
+
+
 
 storage_client = storage.Client()
 
@@ -27,57 +39,97 @@ def download_gcs_blob(bucket_name, source_blob_name):
 @app.post("/test-event")
 async def handle_gcs_event(request: Request):
     event = await request.json()
-    print("Received Eventarc event:", json.dumps(event, indent=2))
-
     bucket_name = event["bucket"]
-    file_path = event["name"]
-    folder_prefix = file_path.rsplit('/', 1)[0] + '/'
-
+    zip_blob_name = event["name"]
+    
+    #folder_prefix = file_path.rsplit('/', 1)[0] + '/'
+    zip_bytes = download_gcs_blob(bucket_name, zip_blob_name)
+    
     multimodal_content_parts = []
-    # List and process all files in the folder
-    bucket = storage_client.bucket(bucket_name)
-    blobs = bucket.list_blobs(prefix=folder_prefix)
 
-    for blob in blobs:
-        if blob.name.endswith('/'):
-            continue
+    # Unpack zip in memory
+    try:
+            with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+                for file_name in zf.namelist():
+                    if file_name.startswith("__MACOSX") or file_name.endswith(".DS_Store") or file_name.startswith("._"):
+                        continue
+                    if file_name.endswith("/"):  # skip directories
+                        continue
 
-        file_bytes = blob.download_as_bytes()
-        
-        # Prepare content based on file type
-        if blob.content_type.startswith("image/"):
-            base64_encoded_image = base64.b64encode(file_bytes).decode('utf-8')
-            multimodal_content_parts.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:{blob.content_type};base64,{base64_encoded_image}"}
-            })
-        elif blob.content_type.startswith("text/"):
-            multimodal_content_parts.append({
-                "type": "text",
-                "text": file_bytes.decode('utf-8')
-            })
-        elif blob.content_type.startswith("video/"):
-            multimodal_content_parts.append({
-                "type": "video_url",
-                "video_url": {"url": f"gs://{bucket_name}/{blob.name}"}
-            })
-        elif blob.content_type in ["application/pdf", "application/vnd.openxmlformats-officedocument.presentationml.presentation"]:
-            file_data = io.BytesIO(file_bytes)
-            multimodal_content_parts.append({
-                "type": "file_url",
-                "url": "data:application/octet-stream;base64," + base64.b64encode(file_data.read()).decode('utf-8')
-            })
+                    print(f"🔎 Processing {file_name}")
+                    file_bytes = zf.read(file_name)
 
-    # Add the user prompt to the list of content parts
-    user_prompt = "Based on the contents of the entire folder, provide a summary and key insights. The folder may contain documents, images, and videos. Respond in the structured JSON format."
+                    if file_name.lower().endswith((".png", ".jpg", ".jpeg")):
+                        base64_encoded_image = base64.b64encode(file_bytes).decode("utf-8")
+                        multimodal_content_parts.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{base64_encoded_image}"
+                            }
+                        })
+
+                    elif file_name.lower().endswith(".txt"):
+                        multimodal_content_parts.append({
+                            "type": "text",
+                            "text": file_bytes.decode("utf-8")
+                        })
+
+                    elif file_name.lower().endswith((".mp4", ".mov", ".avi")):
+                        base64_encoded_video = base64.b64encode(file_bytes).decode("utf-8")
+                        multimodal_content_parts.append({
+                            "type": "media",
+                            "media_url": base64_encoded_video,
+                            "mime_type": "video/mp4"
+                        })
+
+                    elif file_name.lower().endswith((".pdf", ".pptx")):
+                        base64_encoded_file = base64.b64encode(file_bytes).decode("utf-8")
+                        multimodal_content_parts.append({
+                            "type": "media",
+                            "data": base64_encoded_file,
+                            "mime_type": "application/pdf" if file_name.endswith(".pdf")
+                                       else "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                        })
+    except zipfile.BadZipFile:
+            print("❌ Uploaded file is not a valid ZIP archive")
+            return {"error": "Invalid ZIP file"}
+
+    
+    user_prompt = "Evaluate this complete data"
     final_prompt_content = [{"type": "text", "text": user_prompt}] + multimodal_content_parts
 
-
-    # 👉 Call your existing logic here
-    res = f"New file {file_path} uploaded in bucket {bucket_name},{folder_prefix}"
-    print(res)
-
-    result=generate_metrics(final_prompt_content)
+  
+    res = f"New file uploaded in bucket {bucket_name}"
+    try:
+            result = await generate_metrics(final_prompt_content)
+            print("✅ LLM result received")
+    except Exception as e:
+            print(f"❌ Error in generate_metrics: {e}")
+            return {f"error": "LLM processing failed {e}"}
+    try:
+            pitch_dict = result.dict() if hasattr(result, "dict") else result
+            row_id = str(uuid.uuid4())
+            row = {
+        "id": row_id,  # unique id
+        "basicInfo": json.dumps(pitch_dict.get("basicInfo", {})),
+        "metrics": json.dumps(pitch_dict.get("metrics", {})),
+        "financials": json.dumps(pitch_dict.get("financials", {})),
+        "team": json.dumps(pitch_dict.get("team", [])),
+        "equity": json.dumps(pitch_dict.get("equity", {})),
+        "market": json.dumps(pitch_dict.get("market", {})),
+        "product": json.dumps(pitch_dict.get("product", {})),
+        "exit": json.dumps(pitch_dict.get("exit", {})),
+        "legal": json.dumps(pitch_dict.get("legal", {})),
+        "investment_summary": json.dumps(pitch_dict.get("investment_summary", {})),
+        "created_at": datetime.utcnow().isoformat()
+    }
+            errors = bq_client.insert_rows_json(table_id, [row])
+            if errors:
+                print(f"❌ BigQuery insert errors: {errors}")
+            else:
+                print(f"✅ Inserted into BigQuery with ID: {row_id}")
+    except Exception as e:
+            print(f"❌ Error inserting into BigQuery: {e}")
     return result
 
 # if __name__ == "__main__":
