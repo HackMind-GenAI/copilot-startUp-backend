@@ -2,6 +2,8 @@ import io
 import json
 from fastapi import FastAPI, Request
 from services.metrics_generator import generate_metrics
+from services.devils_advocate import get_devils_advocate_analysis, DevilsAdvocateRequest, DevilsAdvocateResponse
+from services.comparison_analysis import get_comparison_analysis, ComparisonRequest, ComparisonResponse
 from langsmith import traceable
 import uvicorn
 from models.summarize import HelloResponse,HelloRequest
@@ -9,13 +11,36 @@ from google.cloud import storage
 import base64
 
 app = FastAPI()
+
 @traceable
 @app.post("/analyze")
 def main(userInput: HelloRequest):
     result=generate_metrics(userInput.name)
     return result
 
-storage_client = storage.Client()
+@traceable
+@app.post("/getDevilsAdvocate", response_model=DevilsAdvocateResponse)
+def get_devils_advocate(request: DevilsAdvocateRequest):
+    """
+    Devil's Advocate endpoint that provides critical analysis using LangChain Google agent
+    """
+    result = get_devils_advocate_analysis(request)
+    return result
+
+@traceable
+@app.post("/getComparisonData", response_model=ComparisonResponse)
+def get_comparison_data(request: ComparisonRequest):
+    """
+    Competitor Analysis endpoint that provides comprehensive market analysis using web search and LangChain agents
+    """
+    result = get_comparison_analysis(request)
+    return result
+
+try:
+    storage_client = storage.Client()
+except Exception as e:
+    print(f"Warning: Google Cloud Storage client could not be initialized: {e}")
+    storage_client = None
 
 def download_gcs_blob(bucket_name, source_blob_name):
     """Downloads a blob from a GCS bucket."""
@@ -26,6 +51,9 @@ def download_gcs_blob(bucket_name, source_blob_name):
 
 @app.post("/test-event")
 async def handle_gcs_event(request: Request):
+    if storage_client is None:
+        return {"error": "Google Cloud Storage client not configured"}
+    
     event = await request.json()
     print("Received Eventarc event:", json.dumps(event, indent=2))
 
