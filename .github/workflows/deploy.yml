@@ -1,0 +1,46 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - dev   # Only trigger on push/merge to dev branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 1. Authenticate with GCP using your service account key
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # 2. Install gcloud CLI
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      # 3. Configure Docker to use gcloud as a credential helper
+      - name: Configure Docker for gcloud
+        run: gcloud auth configure-docker
+
+      # 4. Build and Push Docker Image
+      - name: Build and Push Docker Image
+        run: |
+          IMAGE="gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.SERVICE_NAME || 'backend-service' }}"
+          gcloud builds submit --tag $IMAGE
+
+      # 5. Deploy to Cloud Run
+      - name: Deploy to Cloud Run
+        run: |
+          IMAGE="gcr.io/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.SERVICE_NAME || 'backend-service' }}"
+          gcloud run deploy ${{ secrets.SERVICE_NAME || 'backend-service' }} \
+            --image $IMAGE \
+            --region ${{ secrets.CLOUD_RUN_REGION || 'asia-south1' }} \
+            --platform managed \
+            --allow-unauthenticated

@@ -9,3 +9,4 @@ python-dotenv
 google-cloud-storage
 duckduckgo-search
 ddgs
+google-cloud-bigquery
