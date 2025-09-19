@@ -3,7 +3,10 @@ uvicorn
 langsmith>=0.1.25
 langchain
 langchain-google-genai
+langchain-community
 pydantic
 python-dotenv
 google-cloud-storage
+duckduckgo-search
+ddgs
 google-cloud-bigquery
