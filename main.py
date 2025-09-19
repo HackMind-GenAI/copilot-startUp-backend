@@ -4,8 +4,7 @@ import json
 import os
 from fastapi import FastAPI, Request
 from services.metrics_generator import generate_metrics
-from services.devils_advocate import get_devils_advocate_analysis, DevilsAdvocateRequest, DevilsAdvocateResponse
-from services.comparison_analysis import get_comparison_analysis, ComparisonRequest, ComparisonResponse
+
 from langsmith import traceable
 import uvicorn
 from models.summarize import HelloRequest
@@ -28,23 +27,23 @@ def main(userInput: HelloRequest):
     result=generate_metrics(userInput.name)
     return result
 
-@traceable
-@app.post("/getDevilsAdvocate", response_model=DevilsAdvocateResponse)
-def get_devils_advocate(request: DevilsAdvocateRequest):
-    """
-    Devil's Advocate endpoint that provides critical analysis using LangChain Google agent
-    """
-    result = get_devils_advocate_analysis(request)
-    return result
+# @traceable
+# @app.post("/getDevilsAdvocate", response_model=DevilsAdvocateResponse)
+# def get_devils_advocate(request: DevilsAdvocateRequest):
+#     """
+#     Devil's Advocate endpoint that provides critical analysis using LangChain Google agent
+#     """
+#     result = get_devils_advocate_analysis(request)
+#     return result
 
-@traceable
-@app.post("/getComparisonData", response_model=ComparisonResponse)
-def get_comparison_data(request: ComparisonRequest):
-    """
-    Competitor Analysis endpoint that provides comprehensive market analysis using web search and LangChain agents
-    """
-    result = get_comparison_analysis(request)
-    return result
+# @traceable
+# @app.post("/getComparisonData", response_model=ComparisonResponse)
+# def get_comparison_data(request: ComparisonRequest):
+#     """
+#     Competitor Analysis endpoint that provides comprehensive market analysis using web search and LangChain agents
+#     """
+#     result = get_comparison_analysis(request)
+#     return result
 
 try:
     storage_client = storage.Client()
@@ -62,7 +61,7 @@ def download_gcs_blob(bucket_name, source_blob_name):
 @app.post("/test-event")
 async def handle_gcs_event(request: Request):
     event = await request.json()
-    event_id = event["id"]
+    event_id = event["generation"]
     bucket_name = event["bucket"]
     zip_blob_name = event["name"]
     print(f'{event}')
@@ -155,6 +154,30 @@ async def handle_gcs_event(request: Request):
             print(f"❌ Error inserting into BigQuery: {e}")
     return result
 
+
+@app.get("/records")
+async def get_filtered_records():
+    try:
+        query = f"""
+        SELECT *
+        FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY id ORDER BY created_at DESC) AS rn
+            FROM `{table_id}`
+            WHERE devils_advocate IS NOT NULL
+              AND competitors IS NOT NULL
+        ) t
+        WHERE rn = 1
+        ORDER BY created_at DESC
+        """
+        query_job = bq_client.query(query)
+        results = query_job.result()
+        records = [dict(row) for row in results]
+
+        return {"count": len(records), "records": records}
+
+    except Exception as e:
+        return {"error": str(e)}
 # if __name__ == "__main__":
 #     uvicorn.run("main:app")
 
