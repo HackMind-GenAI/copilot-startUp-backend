@@ -6,9 +6,11 @@ from langchain.memory import ConversationBufferMemory
 import dotenv
 from langsmith import traceable
 from pydantic import BaseModel
+import re
 
 dotenv.load_dotenv()
 
+# ------------------ Request & Response Models ------------------
 class DevilsAdvocateRequest(BaseModel):
     message: str
     startup_idea: str = None
@@ -17,66 +19,81 @@ class DevilsAdvocateResponse(BaseModel):
     counter_argument: str
     risk_assessment: str
     alternative_perspective: str
+    data_consistency: str
+    evidence_strength: str
+    improvements: str
+    overall_suggestion: str
 
-# Initialize the LLM
+# ------------------ LLM Setup ------------------
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.7)
 
-def create_counter_argument_tool():
-    """Tool to generate counter-arguments"""
-    def counter_argue(input_text: str) -> str:
+# ------------------ Tool Definitions ------------------
+def create_tool(name, system_role, description, task):
+    """Utility to create tools dynamically"""
+    def tool_func(input_text: str) -> str:
         response = llm.invoke([
-            SystemMessage(content="You are a critical thinker who provides counter-arguments. Challenge the given statement with logical reasoning and evidence-based concerns."),
-            HumanMessage(content=f"Provide a counter-argument to: {input_text}")
+            SystemMessage(content=system_role),
+            HumanMessage(content=f"{task}: {input_text}")
         ])
         return response.content
-    
-    return Tool(
-        name="counter_argument",
-        description="Generates counter-arguments to challenge a given statement or idea",
-        func=counter_argue
-    )
+    return Tool(name=name, description=description, func=tool_func)
 
-def create_risk_assessment_tool():
-    """Tool to assess risks"""
-    def assess_risks(input_text: str) -> str:
-        response = llm.invoke([
-            SystemMessage(content="You are a risk analyst. Identify potential risks, challenges, and negative outcomes for the given scenario."),
-            HumanMessage(content=f"Analyze the risks for: {input_text}")
-        ])
-        return response.content
-    
-    return Tool(
-        name="risk_assessment",
-        description="Analyzes potential risks and challenges",
-        func=assess_risks
-    )
+# Existing tools
+counter_argument_tool = create_tool(
+    "counter_argument",
+    "You are a critical thinker who provides counter-arguments.",
+    "Generates counter-arguments to challenge a given statement or idea",
+    "Provide a counter-argument to"
+)
 
-def create_alternative_perspective_tool():
-    """Tool to provide alternative perspectives"""
-    def alternative_view(input_text: str) -> str:
-        response = llm.invoke([
-            SystemMessage(content="You are a creative thinker who provides alternative perspectives. Consider different viewpoints, market conditions, and scenarios."),
-            HumanMessage(content=f"Provide alternative perspectives on: {input_text}")
-        ])
-        return response.content
-    
-    return Tool(
-        name="alternative_perspective",
-        description="Provides alternative viewpoints and perspectives",
-        func=alternative_view
-    )
+risk_assessment_tool = create_tool(
+    "risk_assessment",
+    "You are a risk analyst. Identify potential risks, challenges, and negative outcomes.",
+    "Analyzes potential risks and challenges",
+    "Analyze the risks for"
+)
 
-# Create tools
-counter_argument_tool = create_counter_argument_tool()
-risk_assessment_tool = create_risk_assessment_tool()
-alternative_perspective_tool = create_alternative_perspective_tool()
+alternative_perspective_tool = create_tool(
+    "alternative_perspective",
+    "You are a creative thinker who provides alternative perspectives.",
+    "Provides alternative viewpoints and perspectives",
+    "Provide alternative perspectives on"
+)
 
-# Initialize memory
+# New tools
+data_consistency_tool = create_tool(
+    "data_consistency",
+    "You are a data auditor. Check for contradictions, missing details, or logical gaps.",
+    "Checks consistency and gaps in the data",
+    "Check data consistency for"
+)
+
+evidence_strength_tool = create_tool(
+    "evidence_strength",
+    "You are an evidence evaluator. Judge if the claims/data are strong, weak, or unsupported.",
+    "Evaluates strength of provided evidence",
+    "Evaluate the strength of evidence for"
+)
+
+improvements_tool = create_tool(
+    "improvements",
+    "You are a mentor. Suggest actionable improvements and refinements to the idea.",
+    "Suggests improvements and next steps",
+    "Suggest improvements for"
+)
+
+# ------------------ Tools + Agent ------------------
 memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
-# Create the Devil's Advocate agent
 devils_advocate_agent = initialize_agent(
-    tools=[counter_argument_tool, risk_assessment_tool, alternative_perspective_tool],
+    tools=[
+        counter_argument_tool,
+        risk_assessment_tool,
+        alternative_perspective_tool,
+        data_consistency_tool,
+        evidence_strength_tool,
+        improvements_tool
+    ],
     llm=llm,
     agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION,
     memory=memory,
@@ -84,10 +101,32 @@ devils_advocate_agent = initialize_agent(
     handle_parsing_errors=True
 )
 
+# ------------------ Parser ------------------
+def parse_agent_output(output: str) -> DevilsAdvocateResponse:
+    """
+    Parse structured agent output into DevilsAdvocateResponse.
+    """
+    def extract(section: str) -> str:
+        pattern = rf"\*\*{section}\*\*:(.*?)(?=\n- \*\*|$)"
+        match = re.search(pattern, output, re.DOTALL | re.IGNORECASE)
+        return match.group(1).strip() if match else "Not found"
+
+    return DevilsAdvocateResponse(
+        counter_argument=extract("Counter-Arguments"),
+        risk_assessment=extract("Risk Assessment"),
+        alternative_perspective=extract("Alternative Perspectives"),
+        data_consistency=extract("Data Consistency Check"),
+        evidence_strength=extract("Evidence Strength"),
+        improvements=extract("Improvements"),
+        overall_suggestion=extract("Overall Suggestion")
+    )
+
+# ------------------ Main Function ------------------
 @traceable
 def get_devils_advocate_analysis(request: DevilsAdvocateRequest) -> DevilsAdvocateResponse:
     """
-    Generate a Devil's Advocate analysis using LangChain agent
+    Generate a Devil's Advocate analysis using LangChain agent.
+    Now includes counter-arguments, risks, alternatives, evidence strength, data consistency, improvements, and overall suggestion.
     """
     try:
         # Prepare the input message
@@ -96,39 +135,56 @@ def get_devils_advocate_analysis(request: DevilsAdvocateRequest) -> DevilsAdvoca
         else:
             input_message = request.message
 
-        # System prompt for the agent
+        # Enhanced system prompt
         agent_prompt = f"""
-        You are a Devil's Advocate AI agent specializing in startup analysis. Your role is to critically examine ideas, 
-        identify potential flaws, and challenge assumptions. For the following input, use your tools to:
-        
-        1. Generate thoughtful counter-arguments
-        2. Assess potential risks and challenges
-        3. Provide alternative perspectives
-        
-        Input: {input_message}
-        
-        Provide a comprehensive analysis that helps entrepreneurs think critically about their ideas.
+        You are "Devil’s Advocate", an AI startup analyst that uses available tools 
+        (counter_argument, risk_assessment, alternative_perspective, data_consistency, evidence_strength, improvements) 
+        to rigorously test assumptions and challenge input data or ideas.
+
+        ### Instructions
+        - For every input, first restate it clearly.
+        - Use your tools to:
+          1. Generate counter-arguments
+          2. Identify risks and weaknesses
+          3. Provide alternative perspectives
+          4. Check data consistency and gaps
+          5. Judge the strength of evidence
+          6. Suggest improvements and refinements
+        - After using the tools, synthesize everything into a **final structured response**.
+
+        ### Final Output Format
+        - **Restated Input**: …
+        - **Counter-Arguments**: …
+        - **Risk Assessment**: …
+        - **Alternative Perspectives**: …
+        - **Data Consistency Check**: …
+        - **Evidence Strength**: …
+        - **Improvements**: …
+        - **Overall Suggestion**: …
+
+        ### Important
+        - Always call the tools before producing the final response.
+        - Ensure the final suggestion is balanced: critical but constructive.
+        - Merge and summarize tool outputs neatly.
+
+        Now analyze the following input:
+        {input_message}
         """
 
-        # Run the agent
+        # Run the agent — it will call tools automatically
         result = devils_advocate_agent.run(agent_prompt)
-        
-        # Parse the result and structure the response
-        # For now, we'll use the full result as counter_argument and generate specific responses
-        counter_arg_result = counter_argument_tool.func(input_message)
-        risk_result = risk_assessment_tool.func(input_message)
-        alternative_result = alternative_perspective_tool.func(input_message)
-        
-        return DevilsAdvocateResponse(
-            counter_argument=counter_arg_result,
-            risk_assessment=risk_result,
-            alternative_perspective=alternative_result
-        )
-        
+
+        # Parse into structured response
+        return parse_agent_output(result)
+
     except Exception as e:
         print(f"Error in Devil's Advocate analysis: {str(e)}")
         return DevilsAdvocateResponse(
-            counter_argument="Error generating counter-argument",
-            risk_assessment="Error assessing risks",
-            alternative_perspective="Error providing alternative perspective"
+            counter_argument="Error",
+            risk_assessment="Error",
+            alternative_perspective="Error",
+            data_consistency="Error",
+            evidence_strength="Error",
+            improvements="Error",
+            overall_suggestion="Error"
         )
