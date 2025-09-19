@@ -4,6 +4,8 @@ import json
 import os
 from fastapi import FastAPI, Request
 from services.metrics_generator import generate_metrics
+from services.devils_advocate import get_devils_advocate_analysis, DevilsAdvocateRequest, DevilsAdvocateResponse
+from services.comparison_analysis import get_comparison_analysis, ComparisonRequest, ComparisonResponse
 from langsmith import traceable
 import uvicorn
 from models.summarize import HelloRequest
@@ -19,15 +21,36 @@ bq_client = bigquery.Client()
 table_id = os.environ.get("BQ_TABLE_ID")
 
 app = FastAPI()
+
 @traceable
 @app.post("/analyze")
 def main(userInput: HelloRequest):
     result=generate_metrics(userInput.name)
     return result
 
+@traceable
+@app.post("/getDevilsAdvocate", response_model=DevilsAdvocateResponse)
+def get_devils_advocate(request: DevilsAdvocateRequest):
+    """
+    Devil's Advocate endpoint that provides critical analysis using LangChain Google agent
+    """
+    result = get_devils_advocate_analysis(request)
+    return result
 
+@traceable
+@app.post("/getComparisonData", response_model=ComparisonResponse)
+def get_comparison_data(request: ComparisonRequest):
+    """
+    Competitor Analysis endpoint that provides comprehensive market analysis using web search and LangChain agents
+    """
+    result = get_comparison_analysis(request)
+    return result
 
-storage_client = storage.Client()
+try:
+    storage_client = storage.Client()
+except Exception as e:
+    print(f"Warning: Google Cloud Storage client could not be initialized: {e}")
+    storage_client = None
 
 def download_gcs_blob(bucket_name, source_blob_name):
     """Downloads a blob from a GCS bucket."""
@@ -37,8 +60,8 @@ def download_gcs_blob(bucket_name, source_blob_name):
 
 
 @app.post("/test-event")
-def handle_gcs_event(request: Request):
-    event = request.json()
+async def handle_gcs_event(request: Request):
+    event = await request.json()
     event_id = event["id"]
     bucket_name = event["bucket"]
     zip_blob_name = event["name"]
