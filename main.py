@@ -155,6 +155,30 @@ async def handle_gcs_event(request: Request):
             print(f"❌ Error inserting into BigQuery: {e}")
     return result
 
+
+@app.get("/records")
+async def get_filtered_records():
+    try:
+        query = f"""
+        SELECT *
+        FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY id ORDER BY created_at DESC) AS rn
+            FROM `{table_id}`
+            WHERE devils_advocate IS NOT NULL
+              AND competitors IS NOT NULL
+        ) t
+        WHERE rn = 1
+        ORDER BY created_at DESC
+        """
+        query_job = bq_client.query(query)
+        results = query_job.result()
+        records = [dict(row) for row in results]
+
+        return {"count": len(records), "records": records}
+
+    except Exception as e:
+        return {"error": str(e)}
 # if __name__ == "__main__":
 #     uvicorn.run("main:app")
 
