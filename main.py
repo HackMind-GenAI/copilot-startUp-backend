@@ -4,7 +4,8 @@ import json
 import os
 from fastapi import FastAPI, Request
 from services.metrics_generator import generate_metrics
-
+from services.devils_advocate import get_devils_advocate_analysis, DevilsAdvocateRequest, DevilsAdvocateResponse
+from services.comparison_analysis import get_comparison_analysis, ComparisonRequest, ComparisonResponse
 from langsmith import traceable
 import uvicorn
 from models.summarize import HelloRequest
@@ -27,23 +28,23 @@ def main(userInput: HelloRequest):
     result=generate_metrics(userInput.name)
     return result
 
-# @traceable
-# @app.post("/getDevilsAdvocate", response_model=DevilsAdvocateResponse)
-# def get_devils_advocate(request: DevilsAdvocateRequest):
-#     """
-#     Devil's Advocate endpoint that provides critical analysis using LangChain Google agent
-#     """
-#     result = get_devils_advocate_analysis(request)
-#     return result
+@traceable
+@app.post("/getDevilsAdvocate", response_model=DevilsAdvocateResponse)
+def get_devils_advocate(request: DevilsAdvocateRequest):
+    """
+    Devil's Advocate endpoint that provides critical analysis using LangChain Google agent
+    """
+    result = get_devils_advocate_analysis(request)
+    return result
 
-# @traceable
-# @app.post("/getComparisonData", response_model=ComparisonResponse)
-# def get_comparison_data(request: ComparisonRequest):
-#     """
-#     Competitor Analysis endpoint that provides comprehensive market analysis using web search and LangChain agents
-#     """
-#     result = get_comparison_analysis(request)
-#     return result
+@traceable
+@app.post("/getComparisonData", response_model=ComparisonResponse)
+def get_comparison_data(request: ComparisonRequest):
+    """
+    Competitor Analysis endpoint that provides comprehensive market analysis using web search and LangChain agents
+    """
+    result = get_comparison_analysis(request)
+    return result
 
 try:
     storage_client = storage.Client()
@@ -61,7 +62,7 @@ def download_gcs_blob(bucket_name, source_blob_name):
 @app.post("/test-event")
 async def handle_gcs_event(request: Request):
     event = await request.json()
-    event_id = event["generation"]
+    event_id = event["id"]
     bucket_name = event["bucket"]
     zip_blob_name = event["name"]
     print(f'{event}')
