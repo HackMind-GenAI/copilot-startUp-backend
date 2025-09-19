@@ -37,11 +37,13 @@ def download_gcs_blob(bucket_name, source_blob_name):
 
 
 @app.post("/test-event")
-async def handle_gcs_event(request: Request):
-    event = await request.json()
+def handle_gcs_event(request: Request):
+    event = request.json()
+    event_id = event["id"]
     bucket_name = event["bucket"]
     zip_blob_name = event["name"]
-    
+    print(f'{event}')
+    print(f'{bucket_name},{zip_blob_name}')
     #folder_prefix = file_path.rsplit('/', 1)[0] + '/'
     zip_bytes = download_gcs_blob(bucket_name, zip_blob_name)
     
@@ -98,10 +100,8 @@ async def handle_gcs_event(request: Request):
     user_prompt = "Evaluate this complete data"
     final_prompt_content = [{"type": "text", "text": user_prompt}] + multimodal_content_parts
 
-  
-    res = f"New file uploaded in bucket {bucket_name}"
     try:
-            result = await generate_metrics(final_prompt_content)
+            result =  generate_metrics(final_prompt_content)
             print("✅ LLM result received")
     except Exception as e:
             print(f"❌ Error in generate_metrics: {e}")
@@ -110,7 +110,7 @@ async def handle_gcs_event(request: Request):
             pitch_dict = result.dict() if hasattr(result, "dict") else result
             row_id = str(uuid.uuid4())
             row = {
-        "id": row_id,  # unique id
+        "id": event_id,  # unique id
         "basicInfo": json.dumps(pitch_dict.get("basicInfo", {})),
         "metrics": json.dumps(pitch_dict.get("metrics", {})),
         "financials": json.dumps(pitch_dict.get("financials", {})),
