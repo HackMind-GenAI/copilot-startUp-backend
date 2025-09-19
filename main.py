@@ -60,8 +60,8 @@ def download_gcs_blob(bucket_name, source_blob_name):
 
 
 @app.post("/test-event")
-def handle_gcs_event(request: Request):
-    event = request.json()
+async def handle_gcs_event(request: Request):
+    event = await request.json()
     event_id = event["id"]
     bucket_name = event["bucket"]
     zip_blob_name = event["name"]
