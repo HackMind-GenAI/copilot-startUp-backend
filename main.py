@@ -13,7 +13,7 @@ from services.metrics_generator import generate_metrics
 from services.founder_summary_generator import generate_oracle
 from langsmith import traceable
 import uvicorn
-from models.summarize import HelloResponse,HelloRequest
+from models.summarize import HelloRequest
 from models.founder_summary import FounderSummaryRequest
 
 from services.devils_advocate import get_devils_advocate_analysis, DevilsAdvocateRequest, DevilsAdvocateResponse
@@ -115,13 +115,13 @@ def get_devils_advocate(request: DevilsAdvocateRequest):
     return result
 
 @traceable
-@app.post("/getComparisonData", response_model=ComparisonResponse, tags=["Comparison"], summary="Competitor / market comparison")
-def get_comparison_data(request: ComparisonRequest):
+@app.post("/getComparisonData", response_model=CompetitorResponse, tags=["Comparison"], summary="Competitor / market comparison")
+def get_comparison_data(request: CompanyData):
     """
     Enhanced Competitor Analysis endpoint that provides comprehensive competitive intelligence
     using the company's data and web search with LangChain agents
     """
-    result = get_competitor_analysis(company_data)
+    result = get_competitor_analysis(request)
     return result
 
 try:
