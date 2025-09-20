@@ -16,8 +16,10 @@ import uuid
 from datetime import datetime
 import zipfile
 import google.auth
+from models.chat import ChatRequest, ChatResponse
+from services.chat_agent import run_chat_agent
+from services.gcp_utils import get_bq_client
 
-bq_client = bigquery.Client()
 table_id = os.environ.get("BQ_TABLE_ID")
 
 app = FastAPI()
@@ -149,7 +151,8 @@ async def handle_gcs_event(request: Request):
         "investment_summary": json.dumps(pitch_dict.get("investment_summary", {})),
         "created_at": datetime.utcnow().isoformat()
     }
-            errors = bq_client.insert_rows_json(table_id, [row])
+            client = get_bq_client()
+            errors = client.insert_rows_json(table_id, [row])
             if errors:
                 print(f"❌ BigQuery insert errors: {errors}")
             else:
@@ -158,8 +161,35 @@ async def handle_gcs_event(request: Request):
             print(f"❌ Error inserting into BigQuery: {e}")
     return result
 
-# if __name__ == "__main__":
-#     uvicorn.run("main:app")
+@app.post("/chat", response_model=ChatResponse)
+async def chat_agent(request: ChatRequest):
+    """Chat endpoint that forwards the user's message to the chat agent business logic.
+
+    Expects a `ChatRequest` body and returns `ChatResponse`.
+    """
+    user_message = request.message
+    if not user_message:
+        return ChatResponse(reply="Error: No message provided")
+
+    try:
+        result = await run_chat_agent(user_message)
+        response_obj = result.get("response") if isinstance(result, dict) else result
+
+        # Try common attributes first, otherwise stringify the object
+        if hasattr(response_obj, "content"):
+            reply = str(response_obj.content)
+        elif hasattr(response_obj, "text"):
+            reply = str(response_obj.text)
+        else:
+            reply = str(response_obj)
+
+        return ChatResponse(reply=reply)
+    except Exception as e:
+        return ChatResponse(reply=f"Error: {e}")
+
+
+if __name__ == "__main__":
+    uvicorn.run("main:app")
 
 
 
