@@ -63,7 +63,7 @@ def download_gcs_blob(bucket_name, source_blob_name):
 @app.post("/test-event")
 async def handle_gcs_event(request: Request):
     event = await request.json()
-    event_id = event["id"]
+    event_id = event["generation"]
     bucket_name = event["bucket"]
     zip_blob_name = event["name"]
     print(f'{event}')
@@ -143,8 +143,8 @@ async def handle_gcs_event(request: Request):
         "market": json.dumps(pitch_dict.get("market", {})),
         "product": json.dumps(pitch_dict.get("product", {})),
         "exit": json.dumps(pitch_dict.get("exit", {})),
+        "business": json.dumps(pitch_dict.get("business", {})),
         "legal": json.dumps(pitch_dict.get("legal", {})),
-        "investment_summary": json.dumps(pitch_dict.get("investment_summary", {})),
         "created_at": datetime.utcnow().isoformat()
     }
             errors = bq_client.insert_rows_json(table_id, [row])

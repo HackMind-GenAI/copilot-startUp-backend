@@ -192,13 +192,24 @@ class Metrics(BaseModel):
     nps: Optional[int]
     mrr: Optional[str]
     arr_growth: Optional[str]
+    customer_satisfaction: Optional[str] = None
+    technology_score: Optional[str] = None
+    competitor_avg_satisfaction: Optional[str] = None
+    competitor_avg_tech_score: Optional[str] = None
+    implementation_speed_advantage: Optional[str] = None
+    industry_avg_gross_margin: Optional[str] = None
+    competitor_avg_churn: Optional[str] = None
+    customer_base_difference: Optional[str] = None
+    addressable_market_gap: Optional[str] = None
+    underserved_market_share: Optional[str] = None
+    top_customer_revenue_concentration: Optional[str] = None
+    expected_irr_range: Optional[str] = None
+    established_players_market_share: Optional[str] = None
+    scale_execution_target: Optional[str] = None
+    cost_leadership_advantage: Optional[str] = None
+    market_leader_share: Optional[str] = None
+    foreign_currency_revenue: Optional[str] = None
 
-# --- Time series financials ---
-class FundingRound(BaseModel):
-    year: str
-    amount: float
-    type: str
-    investors: List[str]
 
 class FinancialsTimeSeries(BaseModel):
     labels: List[str]
@@ -206,7 +217,6 @@ class FinancialsTimeSeries(BaseModel):
     expenses: List[float]
     profit: List[float]
     customers: List[int]
-    funding_rounds: List[FundingRound]
 
 # --- Team ---
 class TeamMember(BaseModel):
@@ -249,86 +259,98 @@ class Product(BaseModel):
     features: List[str]
     competitive_advantages: List[str]
     development_stage: Optional[str]
-    technology_stack: List[str]
-    integrations: List[str]
 
-# --- Competitors ---
-# class Competitor(BaseModel):
-#     id: str
-#     name: str
-#     funding: Optional[str]
-#     valuation: Optional[str]
-#     customers: Optional[str]
-#     growth: Optional[str]
-#     market_share: Optional[str]
-#     founded: Optional[str]
-#     strengths: List[str]
-#     weaknesses: List[str]
 
-# --- Risks ---
-class RiskEntry(BaseModel):
+# ----------------
+# Risk Factors
+# ----------------
+class RiskItem(BaseModel):
+    title: str
+    risk: str
+    mitigation: str
+
+
+class RiskFactors(BaseModel):
+    market_saturation: RiskItem
+    economic_downturn: RiskItem
+    key_person_dependency: RiskItem
+    technology_risks: RiskItem
+
+# ----------------
+# Exit Strategy
+# ----------------
+class StrategicAcquirerGroup(BaseModel):
+    category: str
+    companies: str  # comma-separated in your JSON sample
+
+
+class MarketMultiples(BaseModel):
+    revenue_multiple: str
+    growth_premium: str
+    recent_comparables: str
+
+
+class ExitStrategyDetail(BaseModel):
+    timeline: Optional[str] = None
+    timeline_description: Optional[str] = None
+    potential_valuation: Optional[str] = None
+    valuation_description: Optional[str] = None
+    exit_options: List[str] = []
+    strategic_acquirers: List[StrategicAcquirerGroup] = []
+    market_multiples: Optional[MarketMultiples] = None
+
+
+
+class RevenueType(BaseModel):
     type: str
-    severity: Optional[str]
-    probability: Optional[str]
-    description: Optional[str]
-    mitigation: Optional[str] = None
-    impact: Optional[str] = None
+    description: Optional[str] = None
 
-# class Risks(BaseModel):
-#     market_risks: List[RiskEntry]
-#     operational_risks: List[RiskEntry]
-#     financial_risks: List[RiskEntry]
 
-# --- Exit Strategy ---
-class PotentialAcquirer(BaseModel):
-    name: str
-    rationale: Optional[str]
-    likelihood: Optional[str]
+class PricingTier(BaseModel):
+    tier: str
+    price: str
+    description: Optional[str] = None
 
-class ExitStrategy(BaseModel):
-    timeline: Optional[str]
-    projected_valuation: str  # low/high/base_case
-    strategies: List[str]
-    potential_acquirers: str  # strategic: List[PotentialAcquirer], financial: List[PotentialAcquirer]
-    market_comparables: str  # saas_multiples, growth_premium, expected_irr
 
-# --- Legal ---
-class LegalDocument(BaseModel):
-    type: str
-    status: Optional[str]
-    last_updated: Optional[str]
+class BusinessModel(BaseModel):
+    revenue_type: RevenueType
+    monetization_strategy: List[str]
+    pricing_strategy: List[PricingTier]
 
-class Legal(BaseModel):
-    incorporation: str
-    intellectual_property: str
-    compliance: str
-    legal_structure: str
-    key_documents: List[LegalDocument]
 
-# --- Devil's Advocate ---
-# class DevilChallenge(BaseModel):
-#     claim: str
-#     counter_arguments: List[str]
+# -------------------
+# Legal & Compliance
+# -------------------
+class Incorporation(BaseModel):
+    jurisdiction: Optional[str] = None
+    entity_type: Optional[str] = None
+    incorporation_date: Optional[str] = None
 
-class CriticalRisk(BaseModel):
-    factor: str
-    description: Optional[str]
 
-# class DevilsAdvocate(BaseModel):
-#     growth_challenges: List[DevilChallenge]
-#     financial_challenges: List[DevilChallenge]
-#     critical_risks: List[CriticalRisk]
-#     stress_tests: List[str]
+class IntellectualProperty(BaseModel):
+    patents_filed: Optional[str] = None
+    patent_description: Optional[str] = None
+    trademarks: Optional[str] = None
 
-# --- Investment Summary ---
-class InvestmentSummary(BaseModel):
-    recommendation: Optional[str]
-    risk_rating: Optional[str]
-    return_potential: Optional[str]
-    time_horizon: Optional[str]
-    key_highlights: List[str]
-    investment_thesis: Optional[str]
-    next_steps: List[str]
+
+class LegalStructure(BaseModel):
+    authorized_shares: Optional[str] = None
+    outstanding_shares: Optional[str] = None
+    option_pool: Optional[str] = None
+
+
+class LegalDocumentLC(BaseModel):
+    icon: Optional[str] = None
+    title: str
+    status: Optional[str] = None
+
+
+class LegalCompliance(BaseModel):
+    incorporation: Incorporation
+    intellectual_property: IntellectualProperty
+    regulatory_compliance: List[str]
+    legal_structure: LegalStructure
+    key_documents: List[LegalDocumentLC]
 
 # --- Full Deal Data ---
 class DealData(BaseModel):
@@ -339,7 +361,6 @@ class DealData(BaseModel):
     equity: Equity
     market: Market
     product: Product
-    exit: ExitStrategy
-    legal: Legal
-    investment_summary: InvestmentSummary
-
+    exit: ExitStrategyDetail
+    business: BusinessModel
+    legal: LegalCompliance
