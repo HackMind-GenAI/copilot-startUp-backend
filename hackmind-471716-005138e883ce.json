@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "hackmind-471716",
+  "private_key_id": "005138e883ce01791948e8f0247dcb4d68488d61",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCPKqG49AOaCB3I\nF4OhwY8x53L1PcBXTLGJ7rJo9NNjTnkadGisgaEeFnnlhl5+0Odc4w8Zr3PQJqci\nGcwJ1IUzNgV1lhz/TSXP4lGNjIl71AHb88XisSfRVzCfqlpX1N6bE/694nzCtVlC\nowMLTCmC2jPrILZ3uvdvgYrnsMwrkhf1EDk6huOKBHynRJcYo5B7GJfulANKk1Wd\n8i1BmiiTgaLQaOdoBK1Q788Q+Rours4bu+mZxkKcv7kz+3uFEXTiFjXJ9kN9QoGc\nmOJezOln7C9+LjCuT7v8/rgPzKEJDodWUpori7lGaz8f+Yn06emLOA26M6XxCl9k\n5IiGrv5DAgMBAAECggEAKzxkusZ2j/4DgHoZdrBN3nRXc1jCzZqLw2wi1S+a51K7\noBGnyvEbB0siZP6/au0L8jFgThF+mE4UC2hfBlj4IQ8fdvNurmtOEAn5NxZKLutH\n5HUqPdvieoYqWQ3JWt0enRbcx9uucd7ypf003iSSJMJhC5FFicMdFr+4g2ARSNbS\nXPJ/xTTZ5CyCOvGTRNpNhph4zfOpRqy2Kx/8L/H4onPdFFCuUVkZpj+nXWTBtqpT\nT/bor2SKBXFAwb4aZvJRtkXkJKWNeF8yCgs6CE7UXTvdaLG0rEVZrCpMHtfaxIVv\nR720dMqg/uzUXHw8QrJaEiWtLH/ZoFTYK49n0vsvgQKBgQDDfPdh5n9PsiyH8zhQ\niu2sjSBuI8BSBrxBHIqQSZnFYcSJcNGxIejucg+lKTIekC4UUSK+owoE4GYskJvk\nfH8SJKI/h6pNxEnPB00c4LjcbbQ4zUEJpYKkvK54Y+bGvg0jn4ZNu4bD2/0hrrRH\n2u3kIk2nQNmD+Fg9lP15xovnRQKBgQC7e41l0ZcB0zU1YgutiFx0yNjr1JlyAseZ\neXYBV24rDZE7NTHFdWeOCc0nqsbJmI1tf/aZMBjVgnbbPcZJxmO1neXbof1/X2d9\nRuV7+oyKPAbHPXVcdElkbMHCI+D37x2xW5IxtVw3uU6doeWIeqYtgBj5LNF3BsnS\nVlLWA8WD5wKBgQCEwWbWa0vl+V/Ya0nBGLfTSHvPkCPZEI3jwdgvqGvu6TgpBh7B\nJgAjff418UYCD3PbhEYOJHZ3XVTFyuazQgChd5NfhWgYK8bb+19Yzxt7RlzvfiQ+\nwtF3wlLRmzZrnUEbAgiY3VLly42ZxCTV701CcjE99gJBZvO1zmpcuoLj6QKBgHVz\nzLxp1mGFUMM1vj0jvVBId2Ue1laPmT3z0tK6VEFSiZZ/F8QtbgeU6lqcaVboZEmi\nLfoAIL65sf5dr/iN+e9QkSzMSgRe33WjUace6qa7Pj/Zp8mY7FWmsKgQVCLfQUnY\nJTlQ9gnO5IpqX2Ll+29r3blUs5EOxqcn/1MmH7onAoGATHp6TO/IKiH8gnZJIrWi\nuwu65HWIClInquHqF5CQY6WPiyS81oPmudqnZHWDGKVcoyWQ1G51oLfjKdANufXu\nARjSDu/KOsDDX0kmi1eXpK70zixxYiGC4gQCePHtKbZtcUuEoMUDZpG1k6TTyZjO\nyBQ3ssYGcHqX29SEGKlWp6w=\n-----END PRIVATE KEY-----\n",
+  "client_email": "github-action-deploy@hackmind-471716.iam.gserviceaccount.com",
+  "client_id": "112311159773422265762",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/github-action-deploy%40hackmind-471716.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
