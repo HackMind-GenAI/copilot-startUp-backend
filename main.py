@@ -33,15 +33,32 @@ except Exception as e:
 
 table_id = os.environ.get("BQ_TABLE_ID")
 
+# Environment: enable docs only for development-like environments
+# Recognize `ENV` or `APP_ENV` (fallback to 'development')
+ENV = os.getenv("ENV", os.getenv("APP_ENV", "development")).lower()
+is_dev = ENV in ("dev", "development", "local")
+# Auto-open docs only when requested (and only in dev)
+AUTO_OPEN_SWAGGER = os.getenv("AUTO_OPEN_SWAGGER", "true").lower() in ("1", "true", "yes")
+
+# Configure FastAPI docs visibility based on environment
+if is_dev:
+    _docs_url = "/docs"
+    _redoc_url = "/redoc"
+    _openapi_url = "/openapi.json"
+else:
+    _docs_url = None
+    _redoc_url = None
+    _openapi_url = None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan handler to run startup/shutdown events.
 
-    Opens the Swagger UI in the browser on startup (dev convenience) when
-    `AUTO_OPEN_SWAGGER` is not set to false.
+    Auto-opens the Swagger UI in the browser on startup (dev convenience)
+    only when running in a development-like environment and `AUTO_OPEN_SWAGGER`
+    is enabled.
     """
-    auto = os.getenv("AUTO_OPEN_SWAGGER", "true").lower() in ("1", "true", "yes")
-    if auto:
+    if is_dev and AUTO_OPEN_SWAGGER:
         def _open():
             # short delay so the server has time to bind the port
             time.sleep(1)
@@ -64,17 +81,18 @@ app = FastAPI(
     title="HackMind StartUp Backend",
     description="APIs for startup analysis: metrics, devil's-advocate, comparison, record queries and chat agent.",
     version="0.1.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
     lifespan=lifespan,
 )
 
 
-@app.get("/", include_in_schema=False)
-def docs_redirect():
-    """Redirect root URL to the Swagger UI"""
-    return RedirectResponse(url="/docs")
+if _docs_url:
+    @app.get("/", include_in_schema=False)
+    def docs_redirect():
+        """Redirect root URL to the Swagger UI"""
+        return RedirectResponse(url=_docs_url)
 
 @traceable
 @app.post("/analyze", tags=["Metrics"], summary="Generate metrics from input")
@@ -283,8 +301,8 @@ async def chat_agent(request: ChatRequest):
         return ChatResponse(reply=f"Error: {e}")
 
 
-if __name__ == "__main__":
-    uvicorn.run("main:app")
+#if __name__ == "__main__":
+#    uvicorn.run("main:app")
 
 
 
