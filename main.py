@@ -136,7 +136,7 @@ def download_gcs_blob(bucket_name, source_blob_name):
     blob = bucket.blob(source_blob_name)
     return blob.download_as_bytes()
 
-
+@traceable
 @app.post("/test-event", tags=["GCS"], summary="Handle GCS test event (zip processing)")
 async def handle_gcs_event(request: Request):
     global bq_client
@@ -208,41 +208,62 @@ async def handle_gcs_event(request: Request):
     except Exception as e:
             print(f"❌ Error in generate_metrics: {e}")
             return {f"error": "LLM processing failed {e}"}
+    
     try:
-            pitch_dict = result.dict() if hasattr(result, "dict") else result
-            row_id = str(uuid.uuid4())
-            row = {
-        "id": event_id,  # unique id
-        "basicInfo": json.dumps(pitch_dict.get("basicInfo", {})),
-        "metrics": json.dumps(pitch_dict.get("metrics", {})),
-        "financials": json.dumps(pitch_dict.get("financials", {})),
-        "team": json.dumps(pitch_dict.get("team", [])),
-        "equity": json.dumps(pitch_dict.get("equity", {})),
-        "market": json.dumps(pitch_dict.get("market", {})),
-        "product": json.dumps(pitch_dict.get("product", {})),
-        "exit": json.dumps(pitch_dict.get("exit", {})),
-        "business": json.dumps(pitch_dict.get("business", {})),
-        "legal": json.dumps(pitch_dict.get("legal", {})),
-        "created_at": datetime.utcnow().isoformat()
-    }
-            if bq_client is None:
-                # Try to initialize on demand; if it fails, log and skip insertion
-                try:
-                    bq_client = bigquery.Client()
-                except Exception as e:
-                    print(f"Warning: BigQuery client initialization failed during insert: {e}")
-                    bq_client = None
+         pitch_dict = result.dict() if hasattr(result, "dict") else result
 
-            if bq_client:
-                errors = bq_client.insert_rows_json(table_id, [row])
-                if errors:
-                    print(f"❌ BigQuery insert errors: {errors}")
-                else:
-                    print(f"✅ Inserted into BigQuery with ID: {row_id}")
-            else:
-                print("⚠️ Skipping BigQuery insert because client is unavailable")
+    # Unique ID for deduplication (event_id or generation)
+         unique_id = event_id  # or use f"{bucket}/{name}/{generation}"
+
+         merge_query = f"""
+    MERGE `{table_id}` T
+    USING (
+        SELECT @id AS id,
+               @basicInfo AS basicInfo,
+               @metrics AS metrics,
+               @financials AS financials,
+               @team AS team,
+               @equity AS equity,
+               @market AS market,
+               @product AS product,
+               @exit AS exit,
+               @business AS business,
+               @legal AS legal,
+               @created_at AS created_at
+    ) S
+    ON T.id = S.id
+    WHEN NOT MATCHED THEN
+      INSERT (id, basicInfo, metrics, financials, team, equity, market, product, exit, business, legal, created_at)
+      VALUES (S.id, S.basicInfo, S.metrics, S.financials, S.team, S.equity, S.market, S.product, S.exit, S.business, S.legal, S.created_at)
+    """
+
+    # Prepare query parameters
+         job_config = bigquery.QueryJobConfig(
+            query_parameters=[
+            bigquery.ScalarQueryParameter("id", "STRING", unique_id),
+            bigquery.ScalarQueryParameter("basicInfo", "STRING", json.dumps(pitch_dict.get("basicInfo", {}))),
+            bigquery.ScalarQueryParameter("metrics", "STRING", json.dumps(pitch_dict.get("metrics", {}))),
+            bigquery.ScalarQueryParameter("financials", "STRING", json.dumps(pitch_dict.get("financials", {}))),
+            bigquery.ScalarQueryParameter("team", "STRING", json.dumps(pitch_dict.get("team", []))),
+            bigquery.ScalarQueryParameter("equity", "STRING", json.dumps(pitch_dict.get("equity", {}))),
+            bigquery.ScalarQueryParameter("market", "STRING", json.dumps(pitch_dict.get("market", {}))),
+            bigquery.ScalarQueryParameter("product", "STRING", json.dumps(pitch_dict.get("product", {}))),
+            bigquery.ScalarQueryParameter("exit", "STRING", json.dumps(pitch_dict.get("exit", {}))),
+            bigquery.ScalarQueryParameter("business", "STRING", json.dumps(pitch_dict.get("business", {}))),
+            bigquery.ScalarQueryParameter("legal", "STRING", json.dumps(pitch_dict.get("legal", {}))),
+            bigquery.ScalarQueryParameter("created_at", "TIMESTAMP", datetime.utcnow())
+        ]
+    )
+
+    # Execute MERGE query
+         query_job = bq_client.query(merge_query, job_config=job_config)
+         query_job.result()  # wait for completion
+
+         print(f"✅ Row with ID={unique_id} inserted if it did not exist")
+
     except Exception as e:
-            print(f"❌ Error inserting into BigQuery: {e}")
+         print(f"❌ Error inserting into BigQuery: {e}")
+
     return result
 
 @app.post("/founder-summary")
