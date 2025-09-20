@@ -63,13 +63,12 @@ def download_gcs_blob(bucket_name, source_blob_name):
 
 @app.post("/test-event")
 async def handle_gcs_event(request: Request):
-    if storage_client is None:
-        return {"error": "Google Cloud Storage client not configured"}
-    
     event = await request.json()
+    event_id = event["id"]
     bucket_name = event["bucket"]
     zip_blob_name = event["name"]
-    
+    print(f'{event}')
+    print(f'{bucket_name},{zip_blob_name}')
     #folder_prefix = file_path.rsplit('/', 1)[0] + '/'
     zip_bytes = download_gcs_blob(bucket_name, zip_blob_name)
     
@@ -126,10 +125,8 @@ async def handle_gcs_event(request: Request):
     user_prompt = "Evaluate this complete data"
     final_prompt_content = [{"type": "text", "text": user_prompt}] + multimodal_content_parts
 
-  
-    res = f"New file uploaded in bucket {bucket_name}"
     try:
-            result = await generate_metrics(final_prompt_content)
+            result =  generate_metrics(final_prompt_content)
             print("✅ LLM result received")
     except Exception as e:
             print(f"❌ Error in generate_metrics: {e}")
@@ -138,7 +135,7 @@ async def handle_gcs_event(request: Request):
             pitch_dict = result.dict() if hasattr(result, "dict") else result
             row_id = str(uuid.uuid4())
             row = {
-        "id": row_id,  # unique id
+        "id": event_id,  # unique id
         "basicInfo": json.dumps(pitch_dict.get("basicInfo", {})),
         "metrics": json.dumps(pitch_dict.get("metrics", {})),
         "financials": json.dumps(pitch_dict.get("financials", {})),
@@ -161,6 +158,32 @@ async def handle_gcs_event(request: Request):
             print(f"❌ Error inserting into BigQuery: {e}")
     return result
 
+
+@app.get("/records")
+async def get_filtered_records():
+    try:
+        query = f"""
+        SELECT *
+        FROM (
+            SELECT *,
+                   ROW_NUMBER() OVER (PARTITION BY id ORDER BY created_at DESC) AS rn
+            FROM `{table_id}`
+            WHERE devils_advocate IS NOT NULL
+              AND competitors IS NOT NULL
+        ) t
+        WHERE rn = 1
+        ORDER BY created_at DESC
+        """
+        query_job = bq_client.query(query)
+        results = query_job.result()
+        records = [dict(row) for row in results]
+
+        return {"count": len(records), "records": records}
+
+    except Exception as e:
+        return {"error": str(e)}
+# if __name__ == "__main__":
+#     uvicorn.run("main:app")
 @app.post("/chat", response_model=ChatResponse)
 async def chat_agent(request: ChatRequest):
     """Chat endpoint that forwards the user's message to the chat agent business logic.
