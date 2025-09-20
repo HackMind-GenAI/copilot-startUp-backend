@@ -5,7 +5,11 @@ Demonstrates how to use the new company_data input format
 """
 
 import json
-import requests
+from services.devils_advocate import (
+    get_devils_advocate_analysis,
+    DevilsAdvocateRequest,
+    DevilsAdvocateResponse
+)
 from typing import Dict, Any
 
 # Sample company data based on your input format
@@ -155,126 +159,128 @@ def test_devils_advocate_analysis():
     """
     Test the enhanced Devil's Advocate analysis with company data
     """
-    
-    # API endpoint
-    url = "http://localhost:8000/getDevilsAdvocate"
-    
-    # Request payload with company data
-    request_data = {
-        "message": "Analyze this fintech startup",
-        "company_data": sample_company_data
-    }
-    
     try:
         print("🔎 Testing Devil's Advocate Analysis with Company Data...")
-        print(f"📤 Sending request to: {url}")
+        print(f"Company: {sample_company_data['basicInfo']['name']}")
+        print(f"Sector: {sample_company_data['basicInfo']['sector']}")
+        print(f"Revenue: {sample_company_data['metrics']['revenue']}")
+        print("-" * 50)
         
-        response = requests.post(url, json=request_data, timeout=120)
+        # Create request object with company data
+        request = DevilsAdvocateRequest(
+            message="Analyze this fintech startup",
+            company_data=sample_company_data
+        )
         
-        if response.status_code == 200:
-            result = response.json()
+        # Run devil's advocate analysis
+        result = get_devils_advocate_analysis(request)
+        
+        print("✅ Analysis completed successfully!")
+        print("\n" + "="*80)
+        print("DEVIL'S ADVOCATE ANALYSIS RESULTS")
+        print("="*80)
+        
+        # Convert to dict for easier access
+        result_dict = result.model_dump()
+        
+        # Print restated input
+        restated = result_dict.get('restated_input', {})
+        print(f"\n📋 RESTATED INPUT:")
+        print(f"   Founder Claim: {restated.get('founder_claim', 'N/A')}")
+        print(f"   AI Restated: {restated.get('ai_restated', 'N/A')}")
+        
+        # Print counter arguments
+        counter_args = result_dict.get('counter_arguments', [])
+        print(f"\n🚨 COUNTER ARGUMENTS ({len(counter_args)} identified):")
+        for i, arg in enumerate(counter_args, 1):
+            print(f"   {i}. {arg.get('point', 'N/A')} [Validity: {arg.get('probability_validity', 'N/A')}]")
+        
+        # Print risk assessment
+        risk_assessment = result_dict.get('risk_assessment', {})
+        print(f"\n⚠️ RISK ASSESSMENT (Overall Score: {risk_assessment.get('overall_risk_score', 'N/A')}/10):")
+        for risk_type in ['regulatory', 'privacy', 'market', 'execution']:
+            risk_data = risk_assessment.get(risk_type, {})
+            print(f"   {risk_type.title()}: Score {risk_data.get('risk_score', 'N/A')}/10 - {risk_data.get('description', 'N/A')}")
+        
+        # Print alternative perspectives
+        alternatives = result_dict.get('alternative_perspectives', [])
+        print(f"\n💡 ALTERNATIVE PERSPECTIVES ({len(alternatives)} suggestions):")
+        for i, alt in enumerate(alternatives, 1):
+            print(f"   {i}. {alt.get('strategy', 'N/A')} [Upside: {alt.get('potential_upside', 'N/A')}]")
+        
+        # Print data consistency
+        data_consistency = result_dict.get('data_consistency_check', {})
+        print(f"\n🔍 DATA CONSISTENCY (Quality Score: {data_consistency.get('data_quality_score', 'N/A')}/100):")
+        print(f"   Missing Fields: {len(data_consistency.get('missing_fields', []))}")
+        print(f"   Inconsistencies: {len(data_consistency.get('inconsistencies', []))}")
+        
+        # Print evidence strength
+        evidence = result_dict.get('evidence_strength', {})
+        print(f"\n📊 EVIDENCE STRENGTH (Score: {evidence.get('strength_score', 'N/A')}/10):")
+        distribution = evidence.get('distribution', {})
+        print(f"   Supporting: {distribution.get('supporting', 'N/A')}% | Weak: {distribution.get('weak', 'N/A')}%")
+        
+        # Print overall suggestion
+        overall = result_dict.get('overall_suggestion', {})
+        print(f"\n📝 OVERALL SUGGESTION:")
+        print(f"   Investor Lens: {overall.get('investor_lens', 'N/A')}")
+        print(f"   Confidence: {overall.get('confidence_score', 'N/A')}/10")
+        print(f"   Red Flags: {len(overall.get('red_flag_alerts', []))}")
+        
+        # Print investor questions
+        questions = result_dict.get('investor_questions', [])
+        print(f"\n❓ INVESTOR QUESTIONS ({len(questions)} generated):")
+        for i, question in enumerate(questions, 1):
+            print(f"   {i}. {question}")
+        
+        # Print loop hole severity
+        severity = result_dict.get('loop_hole_severity_index', 'N/A')
+        print(f"\n🎯 LOOP HOLE SEVERITY INDEX: {severity}")
+        
+        print("\n" + "="*80)
+        print(f"📄 Full JSON response saved to 'devils_advocate_result.json'")
+        
+        # Save full result to file
+        with open('devils_advocate_result.json', 'w') as f:
+            json.dump(result_dict, f, indent=2)
+        
+        return result_dict
             
-            print("✅ Analysis completed successfully!")
-            print("\n" + "="*80)
-            print("DEVIL'S ADVOCATE ANALYSIS RESULTS")
-            print("="*80)
-            
-            # Print restated input
-            restated = result.get('restated_input', {})
-            print(f"\n📋 RESTATED INPUT:")
-            print(f"   Founder Claim: {restated.get('founder_claim', 'N/A')}")
-            print(f"   AI Restated: {restated.get('ai_restated', 'N/A')}")
-            
-            # Print counter arguments
-            counter_args = result.get('counter_arguments', [])
-            print(f"\n🚨 COUNTER ARGUMENTS ({len(counter_args)} identified):")
-            for i, arg in enumerate(counter_args, 1):
-                print(f"   {i}. {arg.get('point', 'N/A')} [Validity: {arg.get('probability_validity', 'N/A')}]")
-            
-            # Print risk assessment
-            risk_assessment = result.get('risk_assessment', {})
-            print(f"\n⚠️ RISK ASSESSMENT (Overall Score: {risk_assessment.get('overall_risk_score', 'N/A')}/10):")
-            for risk_type in ['regulatory', 'privacy', 'market', 'execution']:
-                risk_data = risk_assessment.get(risk_type, {})
-                print(f"   {risk_type.title()}: Score {risk_data.get('risk_score', 'N/A')}/10 - {risk_data.get('description', 'N/A')}")
-            
-            # Print alternative perspectives
-            alternatives = result.get('alternative_perspectives', [])
-            print(f"\n💡 ALTERNATIVE PERSPECTIVES ({len(alternatives)} suggestions):")
-            for i, alt in enumerate(alternatives, 1):
-                print(f"   {i}. {alt.get('strategy', 'N/A')} [Upside: {alt.get('potential_upside', 'N/A')}]")
-            
-            # Print data consistency
-            data_consistency = result.get('data_consistency_check', {})
-            print(f"\n🔍 DATA CONSISTENCY (Quality Score: {data_consistency.get('data_quality_score', 'N/A')}/100):")
-            print(f"   Missing Fields: {len(data_consistency.get('missing_fields', []))}")
-            print(f"   Inconsistencies: {len(data_consistency.get('inconsistencies', []))}")
-            
-            # Print evidence strength
-            evidence = result.get('evidence_strength', {})
-            print(f"\n📊 EVIDENCE STRENGTH (Score: {evidence.get('strength_score', 'N/A')}/10):")
-            distribution = evidence.get('distribution', {})
-            print(f"   Supporting: {distribution.get('supporting', 'N/A')}% | Weak: {distribution.get('weak', 'N/A')}%")
-            
-            # Print overall suggestion
-            overall = result.get('overall_suggestion', {})
-            print(f"\n📝 OVERALL SUGGESTION:")
-            print(f"   Investor Lens: {overall.get('investor_lens', 'N/A')}")
-            print(f"   Confidence: {overall.get('confidence_score', 'N/A')}/10")
-            print(f"   Red Flags: {len(overall.get('red_flag_alerts', []))}")
-            
-            # Print investor questions
-            questions = result.get('investor_questions', [])
-            print(f"\n❓ INVESTOR QUESTIONS ({len(questions)} generated):")
-            for i, question in enumerate(questions, 1):
-                print(f"   {i}. {question}")
-            
-            # Print loop hole severity
-            severity = result.get('loop_hole_severity_index', 'N/A')
-            print(f"\n🎯 LOOP HOLE SEVERITY INDEX: {severity}")
-            
-            print("\n" + "="*80)
-            print(f"📄 Full JSON response saved to 'devils_advocate_result.json'")
-            
-            # Save full result to file
-            with open('devils_advocate_result.json', 'w') as f:
-                json.dump(result, f, indent=2)
-                
-        else:
-            print(f"❌ Request failed with status code: {response.status_code}")
-            print(f"Response: {response.text}")
-            
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Request error: {e}")
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ Test failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 def test_backward_compatibility():
     """
     Test that the old format still works (backward compatibility)
     """
-    url = "http://localhost:8000/getDevilsAdvocate"
-    
-    # Old format request
-    request_data = {
-        "message": "We're building a cloud-native workflow automation platform for enterprises",
-        "startup_idea": "Enterprise automation SaaS"
-    }
-    
     try:
         print("🔄 Testing backward compatibility with old format...")
         
-        response = requests.post(url, json=request_data, timeout=60)
+        # Old format request (without company_data)
+        request = DevilsAdvocateRequest(
+            message="We're building a cloud-native workflow automation platform for enterprises",
+            startup_idea="Enterprise automation SaaS"
+        )
         
-        if response.status_code == 200:
-            result = response.json()
-            print("✅ Backward compatibility confirmed - old format works!")
-            print(f"   Restated input: {result.get('restated_input', {}).get('ai_restated', 'N/A')[:100]}...")
-        else:
-            print(f"❌ Backward compatibility test failed: {response.status_code}")
+        # Run analysis with old format
+        result = get_devils_advocate_analysis(request)
+        
+        print("✅ Backward compatibility confirmed - old format works!")
+        result_dict = result.model_dump()
+        print(f"   Restated input: {result_dict.get('restated_input', {}).get('ai_restated', 'N/A')[:100]}...")
+        print(f"   Counter arguments: {len(result_dict.get('counter_arguments', []))} found")
+        print(f"   Risk score: {result_dict.get('risk_assessment', {}).get('overall_risk_score', 'N/A')}/10")
+        
+        return result_dict
             
     except Exception as e:
         print(f"❌ Backward compatibility error: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 if __name__ == "__main__":
     print("🚀 Devil's Advocate Analysis Test Suite")
