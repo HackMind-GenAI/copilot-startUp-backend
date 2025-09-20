@@ -18,14 +18,14 @@ Usage example (async):
     result = await run_chat_agent(user_query="Analyze revenue trends for startup X", bq_query="SELECT ... LIMIT 10")
 """
 
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import os
 import json
 import dotenv
 import asyncio
+import re
 
 from google.cloud import bigquery
-from services.gcp_utils import get_bq_client
 import requests
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -38,46 +38,48 @@ dotenv.load_dotenv()
 
 # Configuration
 GOOGLE_GENAI_MODEL = os.getenv("GOOGLE_GENAI_MODEL", "gemini-2.5-flash")
-SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
-GEMINI_WEB_SEARCH = os.getenv("GEMINI_WEB_SEARCH", "false").lower() in ("1", "true", "yes")
+print(f"Chat agent config: model={GOOGLE_GENAI_MODEL}")
+
 
 # instantiate module-level LLM used by tools/agent
 llm = ChatGoogleGenerativeAI(model=GOOGLE_GENAI_MODEL, temperature=0.2)
 
+# Default BigQuery SQL (hard-coded in code; uses `BQ_TABLE_ID` env var)
+TABLE_ID = os.getenv("BQ_TABLE_ID")
+STARTUP_PITCH_TABLE_ID = os.getenv("BQ_TABLE_STARTUP_PITCH_ID")
+if TABLE_ID:
+    DEFAULT_BQ_SQL = f"""
+    SELECT *
+    FROM (
+      SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY created_at DESC) AS rn
+      FROM `{TABLE_ID}`
+      WHERE devils_advocate IS NOT NULL
+        AND competitors IS NOT NULL
+    ) t
+    WHERE rn = 1
+    ORDER BY created_at DESC
+    LIMIT 50
+    """
+else:
+    DEFAULT_BQ_SQL = None
 
-def fetch_bigquery(bq_sql: str, project: Optional[str] = None, max_rows: int = 100) -> List[dict]:
+
+def fetch_bigquery(bq_sql: str, project: Optional[str] = None, max_rows: int = 100, query_params: Optional[dict] = None) -> List[dict]:
     """Run a BigQuery SQL query and return rows as list of dicts.
 
     Requires `GOOGLE_APPLICATION_CREDENTIALS` env var or default application credentials.
     """
     client = bigquery.Client(project=project)
-    query_job = client.query(bq_sql)
+    job_config = None
+    if query_params:
+        params = [bigquery.ScalarQueryParameter(name, "STRING", value) for name, value in query_params.items()]
+        job_config = bigquery.QueryJobConfig(query_parameters=params)
+    query_job = client.query(bq_sql, job_config=job_config)
     results = query_job.result(max_results=max_rows)
     return [dict(row) for row in results]
 
 
-def serpapi_search(query: str, num: int = 5) -> List[str]:
-    """Simple SerpAPI web search that returns the top result snippets (if API key provided).
-
-    Falls back to empty list if SERPAPI_API_KEY not set.
-    """
-    if not SERPAPI_API_KEY:
-        return []
-    params = {
-        "engine": "google",
-        "q": query,
-        "api_key": SERPAPI_API_KEY,
-        "num": num,
-    }
-    resp = requests.get("https://serpapi.com/search", params=params, timeout=10)
-    resp.raise_for_status()
-    data = resp.json()
-    snippets = []
-    for item in data.get("organic_results", [])[:num]:
-        snippet = item.get("snippet") or item.get("title")
-        if snippet:
-            snippets.append(snippet)
-    return snippets
+# web search removed — agent will use BigQuery-provided context only
 
 
 def _tool_create(name: str, system_role: str, description: str, task_prefix: str):
@@ -106,15 +108,7 @@ bigquery_tool = Tool(name="bigquery_query", func=_bigquery_tool_func, descriptio
 
 
 # Tool: Web search wrapper (SerpAPI)
-def _web_search_tool_func(query: str) -> str:
-    snippets = serpapi_search(query, num=5)
-    if not snippets and GEMINI_WEB_SEARCH:
-        # hint: model-side browsing might be available in some environments
-        return ""  # empty -> agent may still try model browsing if configured
-    return "\n---\n".join(snippets)
-
-
-web_search_tool = Tool(name="web_search", func=_web_search_tool_func, description="Perform a web search and return top snippets")
+# web_search tool removed; this agent will rely on BigQuery context only
 
 
 # Optional helper: Summarize context
@@ -130,7 +124,7 @@ summarize_tool = _tool_create(
 memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
 
 chat_agent_agent = initialize_agent(
-    tools=[bigquery_tool, web_search_tool, summarize_tool],
+    tools=[bigquery_tool, summarize_tool],
     llm=llm,
     agent=AgentType.CONVERSATIONAL_REACT_DESCRIPTION,
     memory=memory,
@@ -139,50 +133,118 @@ chat_agent_agent = initialize_agent(
 )
 
 
-async def run_chat_agent(user_query: str, bq_sql: Optional[str] = None, project: Optional[str] = None) -> dict:
+async def run_chat_agent(user_query: str, history: Optional[List[Dict[str, Any]]] = None, query_type: Optional[str] = None, project: Optional[str] = None, startup_id: Optional[str] = None) -> dict:
     """Main entrypoint: fetch context, perform web search, call LLM and return the result.
 
     - `user_query`: user's question or instruction.
     - `bq_sql`: optional BigQuery SQL to run and include as context. If omitted, BQ step is skipped.
     - `project`: optional GCP project override for BigQuery client.
     """
-    bq_context = None
-    web_snippets = None
+    bq_context_deals = None
+    bq_context_startups = None
+    # web search removed — not used
 
-    if bq_sql:
-        # run BigQuery in threadpool to avoid blocking event loop
-        loop = asyncio.get_running_loop()
-        bq_context = await loop.run_in_executor(None, fetch_bigquery, bq_sql, project)
+    # Choose server-side hard-coded SQL based on `query_type` and optional `startup_id`
+    use_sql = None
+    # Validate startup_id if provided (simple alphanumeric + dashes/underscores)
+    if startup_id:
+        if not re.match(r"^[A-Za-z0-9_\-]{1,64}$", startup_id):
+            raise ValueError("Invalid startup_id format")
 
-    # run web search (best-effort)
-    web_snippets = await asyncio.get_running_loop().run_in_executor(None, serpapi_search, user_query)
+    if startup_id and STARTUP_PITCH_TABLE_ID:
+        # Parameterized query to fetch a specific startup by id
+        use_sql = f"SELECT * FROM `{STARTUP_PITCH_TABLE_ID}` WHERE id = @startup_id LIMIT 50"
+        startup_params = {"startup_id": startup_id}
+    elif query_type == "startup_pitch" and STARTUP_PITCH_TABLE_ID:
+        use_sql = f"SELECT * FROM `{STARTUP_PITCH_TABLE_ID}` LIMIT 50"
+        startup_params = None
+    else:
+        use_sql = DEFAULT_BQ_SQL
+        startup_params = None
 
-    # Enforce that web search must be present in the context
-    if not web_snippets:
-        # If GEMINI_WEB_SEARCH is enabled, the developer may be expecting the model to fetch the web itself.
-        # That requires special model tooling or browsing access. If not enabled, fail fast and instruct user.
-        if GEMINI_WEB_SEARCH:
-            raise RuntimeError(
-                "Web search returned no snippets. You enabled GEMINI_WEB_SEARCH but automatic browsing is not configured. "
-                "Configure model browsing/tooling in your Google GenAI account or provide SERPAPI_API_KEY for external search.")
-        else:
-            raise RuntimeError(
-                "Web search is mandatory for this agent but no search results were obtained.\n"
-                "Provide a valid SerpAPI key in `SERPAPI_API_KEY` environment variable or enable Gemini web browsing.\n"
-                "To use SerpAPI: export SERPAPI_API_KEY=your_key\n"
-                "To enable Gemini web browsing: set GEMINI_WEB_SEARCH=true and configure browsing in the Google GenAI SDK (if available).")
+    # Fetch both tables (deals and startup pitches) if available and include both previews
+    loop = asyncio.get_running_loop()
+    use_sql_deals = DEFAULT_BQ_SQL
+    use_sql_startup = f"SELECT * FROM `{STARTUP_PITCH_TABLE_ID}` LIMIT 50" if STARTUP_PITCH_TABLE_ID else None
+
+    # If a specific startup_id was requested, prefer fetching only that startup from the startup table
+    if startup_id and STARTUP_PITCH_TABLE_ID:
+        bq_context_startups = await loop.run_in_executor(None, fetch_bigquery, use_sql, project, 100, startup_params)
+    else:
+        if use_sql_deals:
+            bq_context_deals = await loop.run_in_executor(None, fetch_bigquery, use_sql_deals, project)
+        if use_sql_startup:
+            bq_context_startups = await loop.run_in_executor(None, fetch_bigquery, use_sql_startup, project)
+
+    # Prepare a safe, truncated JSON preview of the BigQuery results to include in the agent prompt
+    bq_preview_deals = None
+    bq_preview_startups = None
+    if bq_context_deals:
+        try:
+            bq_preview_deals = json.dumps(bq_context_deals[:20], default=str)
+        except Exception:
+            bq_preview_deals = str(bq_context_deals)[:4000]
+    if bq_context_startups:
+        try:
+            bq_preview_startups = json.dumps(bq_context_startups[:20], default=str)
+        except Exception:
+            bq_preview_startups = str(bq_context_startups)[:4000]
+
+    # Incorporate structured chat history (if provided) for additional context
+    history_text = None
+    if history:
+        items = []
+        try:
+            for h in history:
+                if not h:
+                    continue
+                # accept either dicts with role/text or objects with attributes
+                role = None
+                text = None
+                if isinstance(h, dict):
+                    role = h.get("role")
+                    text = h.get("text")
+                else:
+                    # fallback: try attribute access
+                    role = getattr(h, "role", None)
+                    text = getattr(h, "text", None)
+
+                if role not in ("user", "assistant"):
+                    # unknown role — treat as user
+                    role = "user"
+
+                if text is None:
+                    continue
+
+                items.append(f"- ({role}) {text}")
+
+            history_text = "\n".join(items) if items else None
+        except Exception:
+            history_text = str(history)[:4000]
 
     # Build agent prompt instructing it to use tools when needed
     agent_prompt = f"""
-You are a helpful startup analysis agent. You have access to tools: `bigquery_query` (executes SQL), `web_search` (fetches web snippets), and `summarize`.
+You are a helpful startup analysis agent. You have access to tools: `bigquery_query` (executes SQL) and `summarize`.
 Rules:
-- Always try to use `web_search` to enrich answers with up-to-date information.
-- Use `bigquery_query` when the user requests data contained in the dataset. When using it, call with a SQL query.
+- Prefer using the provided BigQuery results included below rather than re-running the same query; only call `bigquery_query` if you need additional or different data.
 - Use `summarize` to compress long contexts.
+- Base your analysis on BigQuery context and the user's query (and provided chat history).
+
+Chat history (oldest -> newest):
+{history_text if history_text else 'None'}
 
 User query: {user_query}
 
-If a BigQuery SQL was provided, here it is:\n{bq_sql if bq_sql else 'None'}
+Selected query type: {query_type if query_type else 'default'}
+If a BigQuery SQL was selected, here is the SQL (server-side):\n{use_sql if use_sql else 'None'}
+
+If BigQuery results were fetched, truncated JSON previews are provided below (up to 20 rows each):
+Deals table preview:
+{bq_preview_deals if bq_preview_deals else 'None'}
+
+Startup pitches table preview:
+{bq_preview_startups if bq_preview_startups else 'None'}
+
 Return a concise, actionable response and list which tools you used.
 """
 
@@ -194,4 +256,8 @@ Return a concise, actionable response and list which tools you used.
 
     response_text = await loop.run_in_executor(None, _run_agent)
 
-    return {"response": response_text, "bq_context_rows": len(bq_context) if bq_context else 0, "web_snippets": len(web_snippets) if web_snippets else 0}
+    return {
+        "response": response_text,
+        "bq_context_rows_deals": len(bq_context_deals) if bq_context_deals else 0,
+        "bq_context_rows_startups": len(bq_context_startups) if bq_context_startups else 0,
+    }

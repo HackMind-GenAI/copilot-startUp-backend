@@ -5,10 +5,23 @@
 from __future__ import annotations
 
 from pydantic import BaseModel
+from typing import Optional, List, Literal
+
+
+class ChatMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    text: str
 
 
 class ChatRequest(BaseModel):
     message: str
+    # choose a named query to run against BigQuery (server-side hard-coded SQL)
+    # allowed values: 'default' (uses BQ_TABLE_ID), 'startup_pitch' (uses BQ_TABLE_STARTUP_PITCH_ID)
+    query_type: Optional[str] = "default"
+    # optional filter for a single startup (client provides this to fetch single-row context)
+    startup_id: Optional[str] = None
+    # optional structured chat history (oldest -> newest). Frontend may pass prior messages for context
+    history: Optional[List[ChatMessage]] = None
 
 
 class ChatResponse(BaseModel):
