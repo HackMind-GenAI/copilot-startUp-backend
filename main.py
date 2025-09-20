@@ -9,11 +9,16 @@ import time
 import webbrowser
 from contextlib import asynccontextmanager
 from services.metrics_generator import generate_metrics
-from services.devils_advocate import get_devils_advocate_analysis, DevilsAdvocateRequest, DevilsAdvocateResponse
-from services.comparison_analysis import get_competitor_analysis, CompanyData, CompetitorResponse
+
+from services.founder_summary_generator import generate_oracle
 from langsmith import traceable
 import uvicorn
-from models.summarize import HelloRequest
+from models.summarize import HelloResponse,HelloRequest
+from models.founder_summary import FounderSummaryRequest
+
+from services.devils_advocate import get_devils_advocate_analysis, DevilsAdvocateRequest, DevilsAdvocateResponse
+from services.comparison_analysis import get_competitor_analysis, CompanyData, CompetitorResponse
+
 from google.cloud import storage
 import base64
 from google.cloud import bigquery
@@ -241,6 +246,33 @@ async def handle_gcs_event(request: Request):
     return result
 
 
+@app.post("/founder-summary")
+async def founder_summary(founder_request: FounderSummaryRequest):
+    try:
+        print("Received founder summary request:", founder_request.founder);
+        founders_data = download_gcs_blob('founder-datadump', 'founders-data.txt')
+        multimodal_content_parts = []
+        multimodal_content_parts.append({
+            "type": "text",
+            "text": founders_data
+        })
+        
+        user_prompt = f"""Based on the provided founder profiles and documents, analyze {founder_request.founder}. Generate detailed report mentioned in the system prompt. Avoid one word answer, give reasoning for each field."""
+
+        final_prompt_content = [{"type": "text", "text": user_prompt}] + multimodal_content_parts
+        
+        result = generate_oracle(final_prompt_content)
+        return result
+        
+    except FileNotFoundError:
+        return {"error": "founders-data.txt file not found in resources directory"}
+    except Exception as e:
+        return {"error": f"An error occurred while processing founder data: {str(e)}"}
+
+# if __name__ == "__main__":
+#     uvicorn.run("main:app")
+
+
 @app.get("/records", tags=["Records"], summary="Get filtered records (latest per id)")
 async def get_filtered_records():
     global bq_client
@@ -305,6 +337,7 @@ async def chat_agent(request: ChatRequest):
 
 #if __name__ == "__main__":
 #    uvicorn.run("main:app")
+
 
 
 
