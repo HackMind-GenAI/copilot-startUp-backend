@@ -12,3 +12,6 @@ class FounderSummaryResponse(BaseModel):
     workedWithInPast: List[str]
     risk: str
     pastVentureResult: str
+    communicationStyle: str
+    resilienceAndGrit: str
+    salesOrProductOriented: str
