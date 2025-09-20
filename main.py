@@ -3,6 +3,11 @@ import io
 import json
 import os
 from fastapi import FastAPI, Request
+from fastapi.responses import RedirectResponse
+import threading
+import time
+import webbrowser
+from contextlib import asynccontextmanager
 from services.metrics_generator import generate_metrics
 from services.devils_advocate import get_devils_advocate_analysis, DevilsAdvocateRequest, DevilsAdvocateResponse
 from services.comparison_analysis import get_competitor_analysis, CompanyData, CompetitorResponse
@@ -16,20 +21,87 @@ import uuid
 from datetime import datetime
 import zipfile
 import google.auth
+from models.chat import ChatRequest, ChatResponse
+from services.chat_agent import run_chat_agent
+# Use BigQuery client directly; initialize lazily and safely
+bq_client = None
+try:
+    bq_client = bigquery.Client()
+except Exception as e:
+    print(f"Warning: BigQuery client could not be initialized at startup: {e}")
+    bq_client = None
 
-bq_client = bigquery.Client()
 table_id = os.environ.get("BQ_TABLE_ID")
 
-app = FastAPI()
+# Environment: enable docs only for development-like environments
+# Recognize `ENV` or `APP_ENV` (fallback to 'development')
+ENV = os.getenv("ENV", os.getenv("APP_ENV", "development")).lower()
+is_dev = ENV in ("dev", "development", "local")
+# Auto-open docs only when requested (and only in dev)
+AUTO_OPEN_SWAGGER = os.getenv("AUTO_OPEN_SWAGGER", "true").lower() in ("1", "true", "yes")
+
+# Configure FastAPI docs visibility based on environment
+if is_dev:
+    _docs_url = "/docs"
+    _redoc_url = "/redoc"
+    _openapi_url = "/openapi.json"
+else:
+    _docs_url = None
+    _redoc_url = None
+    _openapi_url = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan handler to run startup/shutdown events.
+
+    Auto-opens the Swagger UI in the browser on startup (dev convenience)
+    only when running in a development-like environment and `AUTO_OPEN_SWAGGER`
+    is enabled.
+    """
+    if is_dev and AUTO_OPEN_SWAGGER:
+        def _open():
+            # short delay so the server has time to bind the port
+            time.sleep(1)
+            port = os.getenv("PORT", "8000")
+            host = os.getenv("HOST", "127.0.0.1")
+            url = f"http://{host}:{port}/docs"
+            try:
+                webbrowser.open(url)
+                print(f"Opened Swagger UI at {url}")
+            except Exception as e:
+                print(f"Could not open browser for Swagger UI: {e}")
+
+        t = threading.Thread(target=_open, daemon=True)
+        t.start()
+
+    yield
+
+
+app = FastAPI(
+    title="HackMind StartUp Backend",
+    description="APIs for startup analysis: metrics, devil's-advocate, comparison, record queries and chat agent.",
+    version="0.1.0",
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
+    openapi_url=_openapi_url,
+    lifespan=lifespan,
+)
+
+
+if _docs_url:
+    @app.get("/", include_in_schema=False)
+    def docs_redirect():
+        """Redirect root URL to the Swagger UI"""
+        return RedirectResponse(url=_docs_url)
 
 @traceable
-@app.post("/analyze")
+@app.post("/analyze", tags=["Metrics"], summary="Generate metrics from input")
 def main(userInput: HelloRequest):
     result=generate_metrics(userInput.name)
     return result
 
 @traceable
-@app.post("/getDevilsAdvocate", response_model=DevilsAdvocateResponse)
+@app.post("/getDevilsAdvocate", response_model=DevilsAdvocateResponse, tags=["Devil's Advocate"], summary="Devil's Advocate analysis")
 def get_devils_advocate(request: DevilsAdvocateRequest):
     """
     Devil's Advocate endpoint that provides critical analysis using LangChain Google agent
@@ -38,8 +110,8 @@ def get_devils_advocate(request: DevilsAdvocateRequest):
     return result
 
 @traceable
-@app.post("/getComparisonData", response_model=CompetitorResponse)
-def get_competitor_data(company_data: CompanyData):
+@app.post("/getComparisonData", response_model=ComparisonResponse, tags=["Comparison"], summary="Competitor / market comparison")
+def get_comparison_data(request: ComparisonRequest):
     """
     Enhanced Competitor Analysis endpoint that provides comprehensive competitive intelligence
     using the company's data and web search with LangChain agents
@@ -60,8 +132,9 @@ def download_gcs_blob(bucket_name, source_blob_name):
     return blob.download_as_bytes()
 
 
-@app.post("/test-event")
+@app.post("/test-event", tags=["GCS"], summary="Handle GCS test event (zip processing)")
 async def handle_gcs_event(request: Request):
+    global bq_client
     event = await request.json()
     event_id = event["generation"]
     bucket_name = event["bucket"]
@@ -147,19 +220,36 @@ async def handle_gcs_event(request: Request):
         "legal": json.dumps(pitch_dict.get("legal", {})),
         "created_at": datetime.utcnow().isoformat()
     }
-            errors = bq_client.insert_rows_json(table_id, [row])
-            if errors:
-                print(f"❌ BigQuery insert errors: {errors}")
+            if bq_client is None:
+                # Try to initialize on demand; if it fails, log and skip insertion
+                try:
+                    bq_client = bigquery.Client()
+                except Exception as e:
+                    print(f"Warning: BigQuery client initialization failed during insert: {e}")
+                    bq_client = None
+
+            if bq_client:
+                errors = bq_client.insert_rows_json(table_id, [row])
+                if errors:
+                    print(f"❌ BigQuery insert errors: {errors}")
+                else:
+                    print(f"✅ Inserted into BigQuery with ID: {row_id}")
             else:
-                print(f"✅ Inserted into BigQuery with ID: {row_id}")
+                print("⚠️ Skipping BigQuery insert because client is unavailable")
     except Exception as e:
             print(f"❌ Error inserting into BigQuery: {e}")
     return result
 
 
-@app.get("/records")
+@app.get("/records", tags=["Records"], summary="Get filtered records (latest per id)")
 async def get_filtered_records():
+    global bq_client
     try:
+        if bq_client is None:
+            try:
+                bq_client = bigquery.Client()
+            except Exception as e:
+                return {"error": f"BigQuery client unavailable: {e}"}
         query = f"""
         SELECT *
         FROM (
@@ -180,8 +270,41 @@ async def get_filtered_records():
 
     except Exception as e:
         return {"error": str(e)}
-# if __name__ == "__main__":
-#     uvicorn.run("main:app")
+
+  
+@app.post("/chat", response_model=ChatResponse, tags=["Chat"], summary="Chat agent endpoint")
+async def chat_agent(request: ChatRequest):
+    """Chat endpoint that forwards the user's message to the chat agent business logic.
+
+    Expects a `ChatRequest` body and returns `ChatResponse`.
+    """
+    user_message = request.message
+    if not user_message:
+        return ChatResponse(reply="Error: No message provided")
+
+    try:
+        # Do not accept raw SQL from external requests; allow selecting a named query_type
+        query_type = request.query_type if hasattr(request, "query_type") else None
+        startup_id = request.startup_id if hasattr(request, "startup_id") else None
+        history = request.history if hasattr(request, "history") else None
+        result = await run_chat_agent(user_message, history=history, query_type=query_type, startup_id=startup_id)
+        response_obj = result.get("response") if isinstance(result, dict) else result
+
+        # Try common attributes first, otherwise stringify the object
+        if hasattr(response_obj, "content"):
+            reply = str(response_obj.content)
+        elif hasattr(response_obj, "text"):
+            reply = str(response_obj.text)
+        else:
+            reply = str(response_obj)
+
+        return ChatResponse(reply=reply)
+    except Exception as e:
+        return ChatResponse(reply=f"Error: {e}")
+
+
+#if __name__ == "__main__":
+#    uvicorn.run("main:app")
 
 
 

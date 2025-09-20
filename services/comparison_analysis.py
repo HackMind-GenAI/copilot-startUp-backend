@@ -93,7 +93,9 @@ class CompetitorResponse(BaseModel):
     analysis: CompetitorAnalysis
 
 # ------------------ LLM ------------------
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.3)
+import os
+GOOGLE_GENAI_MODEL = os.getenv("GOOGLE_GENAI_MODEL", "gemini-2.5-flash")
+llm = ChatGoogleGenerativeAI(model=GOOGLE_GENAI_MODEL, temperature=0.3)
 
 # ------------------ Search Setup ------------------
 try:
