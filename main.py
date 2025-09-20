@@ -10,7 +10,7 @@ import webbrowser
 from contextlib import asynccontextmanager
 from services.metrics_generator import generate_metrics
 from services.devils_advocate import get_devils_advocate_analysis, DevilsAdvocateRequest, DevilsAdvocateResponse
-from services.comparison_analysis import get_comparison_analysis, ComparisonRequest, ComparisonResponse
+from services.comparison_analysis import get_competitor_analysis, CompanyData, CompetitorResponse
 from langsmith import traceable
 import uvicorn
 from models.summarize import HelloRequest
@@ -113,9 +113,10 @@ def get_devils_advocate(request: DevilsAdvocateRequest):
 @app.post("/getComparisonData", response_model=ComparisonResponse, tags=["Comparison"], summary="Competitor / market comparison")
 def get_comparison_data(request: ComparisonRequest):
     """
-    Competitor Analysis endpoint that provides comprehensive market analysis using web search and LangChain agents
+    Enhanced Competitor Analysis endpoint that provides comprehensive competitive intelligence
+    using the company's data and web search with LangChain agents
     """
-    result = get_comparison_analysis(request)
+    result = get_competitor_analysis(company_data)
     return result
 
 try:
@@ -270,6 +271,7 @@ async def get_filtered_records():
     except Exception as e:
         return {"error": str(e)}
 
+  
 @app.post("/chat", response_model=ChatResponse, tags=["Chat"], summary="Chat agent endpoint")
 async def chat_agent(request: ChatRequest):
     """Chat endpoint that forwards the user's message to the chat agent business logic.
