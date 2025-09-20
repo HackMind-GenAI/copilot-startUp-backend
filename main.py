@@ -245,32 +245,50 @@ async def handle_gcs_event(request: Request):
             print(f"❌ Error inserting into BigQuery: {e}")
     return result
 
-
 @app.post("/founder-summary")
 async def founder_summary(founder_request: FounderSummaryRequest):
     try:
-        print("Received founder summary request:", founder_request.founder);
-        founders_data = download_gcs_blob('founder-datadump', 'founders-data.txt')
+        FOUNDER_PROFILING_TABLE_ID = os.getenv("BQ_TABLE_FOUNDER_PROFILE_ID")
+        print("Received founder summary request:", founder_request.founder)
+
+        # --- Start of BigQuery Integration ---
+
+        # 1. Instantiate the BigQuery Client
+        # The client will use the default credentials configured in your environment.
+        client = bigquery.Client()
+
+        # 2. Define the SQL query
+        query = f"""
+            SELECT *
+            FROM `{FOUNDER_PROFILING_TABLE_ID}`
+            LIMIT 1000
+        """
+
+        # 3. Execute the query and fetch results into a pandas DataFrame
+        query_job = client.query(query)  # API request
+        founders_df = query_job.to_dataframe() # Waits for the job to complete
+
+        # 4. Convert the DataFrame to a string to be used in the prompt
+        founders_data = founders_df.to_string()
+
+        # --- End of BigQuery Integration ---
+
         multimodal_content_parts = []
         multimodal_content_parts.append({
             "type": "text",
             "text": founders_data
         })
-        
+
         user_prompt = f"""Based on the provided founder profiles and documents, analyze {founder_request.founder}. Generate detailed report mentioned in the system prompt. Avoid one word answer, give reasoning for each field."""
 
         final_prompt_content = [{"type": "text", "text": user_prompt}] + multimodal_content_parts
         
         result = generate_oracle(final_prompt_content)
         return result
-        
-    except FileNotFoundError:
-        return {"error": "founders-data.txt file not found in resources directory"}
-    except Exception as e:
-        return {"error": f"An error occurred while processing founder data: {str(e)}"}
 
-# if __name__ == "__main__":
-#     uvicorn.run("main:app")
+    except Exception as e:
+        # This will catch errors from BigQuery client instantiation, query execution, or other processing.
+        return {"error": f"An error occurred while processing founder data: {str(e)}"}
 
 
 @app.get("/records", tags=["Records"], summary="Get filtered records (latest per id)")
