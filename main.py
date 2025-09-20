@@ -5,7 +5,7 @@ import os
 from fastapi import FastAPI, Request
 from services.metrics_generator import generate_metrics
 from services.devils_advocate import get_devils_advocate_analysis, DevilsAdvocateRequest, DevilsAdvocateResponse
-from services.comparison_analysis import get_comparison_analysis, ComparisonRequest, ComparisonResponse
+from services.comparison_analysis import get_competitor_analysis, CompanyData, CompetitorResponse
 from langsmith import traceable
 import uvicorn
 from models.summarize import HelloRequest
@@ -38,12 +38,13 @@ def get_devils_advocate(request: DevilsAdvocateRequest):
     return result
 
 @traceable
-@app.post("/getComparisonData", response_model=ComparisonResponse)
-def get_comparison_data(request: ComparisonRequest):
+@app.post("/getComparisonData", response_model=CompetitorResponse)
+def get_competitor_data(company_data: CompanyData):
     """
-    Competitor Analysis endpoint that provides comprehensive market analysis using web search and LangChain agents
+    Enhanced Competitor Analysis endpoint that provides comprehensive competitive intelligence
+    using the company's data and web search with LangChain agents
     """
-    result = get_comparison_analysis(request)
+    result = get_competitor_analysis(company_data)
     return result
 
 try:
