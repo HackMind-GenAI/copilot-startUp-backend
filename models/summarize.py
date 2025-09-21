@@ -174,8 +174,8 @@ class BasicInfo(BaseModel):
     stage: Optional[str]
     employees: Optional[int]
     valuation: Optional[str]
-    growth: Optional[str]
-    website: Optional[str]
+    growth: Optional[float]   # in % percentage
+    website: Optional[str]    
     logo: Optional[str]
 
 # --- Financial Metrics ---
@@ -220,8 +220,8 @@ class FinancialsTimeSeries(BaseModel):
 
 # --- Team ---
 class TeamMember(BaseModel):
-    id: str
-    name: str
+    id: Optional[str]
+    name: Optional[str]
     role: Optional[str]
     background: Optional[str]
     linkedin: Optional[str]
