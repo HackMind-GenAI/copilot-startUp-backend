@@ -212,7 +212,12 @@ class BigQueryAnalysisRunner:
             
             # Parse JSON strings if they exist
             basic_info = json.loads(basic_info_json) if basic_info_json else {}
-            metrics = json.loads(metrics_json) if metrics_json else {}
+            metrics = json.loads(metrics_json) if metrics_json else {
+                "nps": 0,
+                "competitor_avg_satisfaction": "N/A",
+                "competitor_avg_tech_score": "N/A",
+                "industry_avg_gross_margin": "N/A"
+            }
             market = json.loads(market_json) if market_json else {}
             product = json.loads(product_json) if product_json else {}
             
@@ -220,6 +225,14 @@ class BigQueryAnalysisRunner:
             if 'growth' in basic_info and not isinstance(basic_info['growth'], str):
                 basic_info['growth'] = str(basic_info['growth'])
             
+            # Ensure metrics has required fields with default values
+            if metrics is None:
+                metrics = {}
+            metrics.setdefault('nps', 0)
+            metrics.setdefault('competitor_avg_satisfaction', 'N/A')
+            metrics.setdefault('competitor_avg_tech_score', 'N/A')
+            metrics.setdefault('industry_avg_gross_margin', 'N/A')
+
             # Create company data structure
             company_data_dict = {
                 "basicInfo": basic_info,
