@@ -216,6 +216,10 @@ class BigQueryAnalysisRunner:
             market = json.loads(market_json) if market_json else {}
             product = json.loads(product_json) if product_json else {}
             
+            # Convert growth to string if it's a number
+            if 'growth' in basic_info and not isinstance(basic_info['growth'], str):
+                basic_info['growth'] = str(basic_info['growth'])
+            
             # Create company data structure
             company_data_dict = {
                 "basicInfo": basic_info,
@@ -289,7 +293,7 @@ class BigQueryAnalysisRunner:
             print("✅ Devil's Advocate Analysis Complete!")
             print(f"🔍 Overall Risk Score: {result.risk_assessment.overall_risk_score}/10")
             print(f"📋 Found {len(result.counter_arguments)} counter-arguments")
-            print(f"⚠️ Data Quality Score: {result.data_consistency.data_quality_score}/10")
+            print(f"⚠️ Data Quality Score: {result.data_consistency_check.data_quality_score}/10")
             
             # Convert to dict for storage
             devils_advocate_dict = result.model_dump()
@@ -351,11 +355,11 @@ class BigQueryAnalysisRunner:
                     )
                 )
             
-            # Add updated timestamp
-            update_fields.append("updated_at = @updated_at")
+            # Add created timestamp
+            update_fields.append("created_at = @created_at")
             parameters.append(
                 bigquery.ScalarQueryParameter(
-                    "updated_at", 
+                    "created_at", 
                     "TIMESTAMP", 
                     datetime.utcnow()
                 )

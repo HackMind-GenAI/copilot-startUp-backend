@@ -10,15 +10,15 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from google.cloud import bigquery
-from bigquery_config import (
-    get_table_id,
-    get_project_id,
-    get_dataset_id, 
-    get_table_name,
-    GCP_CONFIG,
-    TEST_CONFIG,
-    ANALYSIS_CONFIG
-)
+# from bigquery_config import (
+#     get_table_id,
+#     get_project_id,
+#     get_dataset_id, 
+#     get_table_name,
+#     GCP_CONFIG,
+#     TEST_CONFIG,
+#     ANALYSIS_CONFIG
+# )
 
 def test_configuration():
     """Test the BigQuery configuration and connection"""
