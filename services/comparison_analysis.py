@@ -28,25 +28,28 @@ class BasicInfo(BaseModel):
     logo: str = None
 
 class Metrics(BaseModel):
-    revenue: str = None
-    customers: str = None
-    burn: str = None
-    runway: str = None
-    funding: str = None
-    grossMargin: str = None
-    cac: str = None
-    ltv: str = None
-    churnRate: str = None
-    nps: int = None
-    mrr: str = None
-    arr_growth: str = None
-    customer_satisfaction: str = None
-    technology_score: str = None
-    competitor_avg_satisfaction: str = None
-    competitor_avg_tech_score: str = None
-    implementation_speed_advantage: str = None
-    industry_avg_gross_margin: str = None
-    competitor_avg_churn: str = None
+    revenue: str | None = None
+    customers: str | None = None
+    burn: str | None = None
+    runway: str | None = None
+    funding: str | None = None
+    grossMargin: str | None = None
+    cac: str | None = None
+    ltv: str | None = None
+    churnRate: str | None = None
+    nps: int | None = 0
+    mrr: str | None = None
+    arr_growth: str | None = None
+    customer_satisfaction: str | None = None
+    technology_score: str | None = None
+    competitor_avg_satisfaction: str | None = "N/A"
+    competitor_avg_tech_score: str | None = "N/A"
+    implementation_speed_advantage: str | None = None
+    industry_avg_gross_margin: str | None = "N/A"
+    competitor_avg_churn: str | None = None
+
+    class Config:
+        extra = "allow"  # Allow extra fields
 
 class Market(BaseModel):
     tam: str = None
@@ -65,9 +68,21 @@ class Product(BaseModel):
 
 class CompanyData(BaseModel):
     basicInfo: BasicInfo
-    metrics: Metrics = None
-    market: Market = None
-    product: Product = None
+    metrics: Metrics | None = None
+    market: Market | None = None
+    product: Product | None = None
+
+    class Config:
+        extra = "allow"  # Allow extra fields
+        
+    def __init__(self, **data):
+        if 'metrics' not in data or data['metrics'] is None:
+            data['metrics'] = {}
+        if 'market' not in data or data['market'] is None:
+            data['market'] = {}
+        if 'product' not in data or data['product'] is None:
+            data['product'] = {}
+        super().__init__(**data)
 
 class DirectCompetitor(BaseModel):
     id: int
@@ -98,32 +113,72 @@ GOOGLE_GENAI_MODEL = os.getenv("GOOGLE_GENAI_MODEL", "gemini-2.5-flash")
 llm = ChatGoogleGenerativeAI(model=GOOGLE_GENAI_MODEL, temperature=0.3)
 
 # ------------------ Search Setup ------------------
-try:
-    search_wrapper = DuckDuckGoSearchAPIWrapper(max_results=10)
-    search_tool = DuckDuckGoSearchRun(api_wrapper=search_wrapper)
-    search_available = True
-except Exception as e:
-    print(f"Web search not available: {e}")
-    search_tool = None
-    search_available = False
+def setup_search():
+    try:
+        # Configure search with more generous limits
+        search_wrapper = DuckDuckGoSearchAPIWrapper(
+            max_results=15,  # Increased results
+            time='y',  # Search within last year
+            safesearch='off'  # Include all results
+        )
+        search_tool = DuckDuckGoSearchRun(api_wrapper=search_wrapper)
+        print("✅ Web search configured successfully")
+        return search_tool, True
+    except Exception as e:
+        print(f"⚠️ Web search setup failed: {e}")
+        return None, False
+
+search_tool, search_available = setup_search()
 
 # ------------------ Enhanced Tool Factory ------------------
 def create_competitor_tool(name, system_role, description):
     def tool_func(query: str) -> str:
         if not search_available or search_tool is None:
+            print("⚠️ Using LLM without web search")
             response = llm.invoke([
                 SystemMessage(content=system_role),
                 HumanMessage(content=query)
             ])
             return response.content
+        
         try:
-            search_results = search_tool.run(query)
+            # First, do a targeted search for company names
+            company_search = f"top companies competitors {query}"
+            initial_results = search_tool.run(company_search)
+            
+            # Then do a detailed search including metrics
+            metrics_search = f"funding valuation revenue growth {query}"
+            metrics_results = search_tool.run(metrics_search)
+            
+            # Combine both search results
+            combined_results = f"""
+            Company Search Results:
+            {initial_results}
+            
+            Metrics and Details:
+            {metrics_results}
+            """
+            
+            print("🔍 Web search successful")
             response = llm.invoke([
                 SystemMessage(content=system_role),
-                HumanMessage(content=f"Based on this search data, {query}\n\nSearch Results:\n{search_results}")
+                HumanMessage(content=f"""Based on this search data, please provide a detailed analysis.
+                
+                Query: {query}
+                
+                Search Results:
+                {combined_results}
+                
+                Remember to:
+                1. Only include real companies that actually exist
+                2. Provide specific metrics and numbers where available
+                3. Focus on direct competitors in the same market segment""")
             ])
             return response.content
-        except Exception:
+            
+        except Exception as e:
+            print(f"⚠️ Web search failed: {e}")
+            print("Using LLM knowledge as fallback")
             response = llm.invoke([
                 SystemMessage(content=system_role),
                 HumanMessage(content=f"Web search failed. Based on your knowledge, {query}")
@@ -323,20 +378,30 @@ def get_competitor_analysis(company_data: CompanyData) -> CompetitorResponse:
         # Step 1: Find direct competitors
         competitor_prompt = f"""
         Find the top 3-5 direct competitors for {company_name} in the {sector} sector.
-        
-        Company Context:
+
+        Target Company Context:
         {search_context}
-        
-        For each competitor, find:
-        - Company name
-        - Total funding raised
-        - Current valuation
-        - Number of customers 
-        - Growth rate (YoY)
-        - Market share percentage
-        
-        Focus on companies that offer similar products/services in the same market segment.
-        Search for recent funding rounds, valuations, and growth metrics.
+
+        Search specifically for:
+        1. Leading companies in {sector} sector
+        2. Companies offering similar {description} if available
+        3. Companies with similar business model or target market
+        4. Recent startups or established players in this space
+
+        For each identified competitor, provide:
+        - Company name (must be real companies)
+        - Latest funding round and total funding raised
+        - Most recent valuation or market cap
+        - Customer base size or market reach
+        - YoY growth rate or revenue growth
+        - Estimated market share in {sector}
+
+        Important: 
+        - Provide REAL competitors that actually exist
+        - Include both well-known players and emerging competitors
+        - Focus on companies operating in the same market segment
+        - Include specific numbers and metrics where available
+        - If exact numbers aren't available, provide reasonable estimates based on market research
         """
         
         competitors_result = competitor_analysis_agent.run(competitor_prompt)
